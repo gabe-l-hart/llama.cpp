@@ -424,10 +424,15 @@ struct ggml_backend_cuda_buffer_context {
 static void ggml_backend_cuda_buffer_free_buffer(ggml_backend_buffer_t buffer) {
     ggml_backend_cuda_buffer_context * ctx = (ggml_backend_cuda_buffer_context *)buffer->context;
     delete ctx;
+
+    // TODO: this needs to be freed in cuda and hipblas backends because
+    // the cuda backend implementation compiled with msvc
+    free(buffer);
 }
 
 static bool ggml_backend_buffer_is_cuda(ggml_backend_buffer_t buffer) {
     return buffer->iface.free_buffer == ggml_backend_cuda_buffer_free_buffer;
+
 }
 
 static void * ggml_backend_cuda_buffer_get_base(ggml_backend_buffer_t buffer) {
@@ -3364,6 +3369,7 @@ ggml_backend_t ggml_backend_cuda_init(int device) {
         return nullptr;
     }
 
+<<<<<<< HEAD:ggml/src/ggml-cuda/ggml-cuda.cu
     ggml_backend_t cuda_backend = new ggml_backend {
         /* .guid      = */ ggml_backend_cuda_guid(),
         /* .interface = */ ggml_backend_cuda_interface,
@@ -3372,4 +3378,18 @@ ggml_backend_t ggml_backend_cuda_init(int device) {
     };
 
     return cuda_backend;
+=======
+    GGML_UNUSED(params);
+}
+
+GGML_CALL int ggml_backend_cuda_reg_devices() {
+    int device_count = ggml_backend_cuda_get_device_count();
+    //int device_count = 1; // DEBUG: some tools require delaying CUDA initialization
+    for (int i = 0; i < device_count; i++) {
+        char name[128];
+        snprintf(name, sizeof(name), "%s%d", GGML_CUDA_NAME, i);
+        ggml_backend_register(name, ggml_backend_reg_cuda_init, ggml_backend_cuda_buffer_type(i), (void *) (intptr_t) i);
+    }
+    return device_count;
+>>>>>>> cuda:ggml/src/ggml-cuda.cu
 }
