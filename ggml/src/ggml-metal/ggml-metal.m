@@ -476,8 +476,8 @@ static struct ggml_backend_metal_context * ggml_metal_init(ggml_backend_dev_t de
 #if GGML_METAL_EMBED_LIBRARY
             GGML_LOG_INFO("%s: using embedded metal library\n", __func__);
 
-            extern const char ggml_metallib_start[];
-            extern const char ggml_metallib_end[];
+            extern const char *ggml_metallib_start;
+            extern const char *ggml_metallib_end;
 
             NSString * src = [[NSString alloc] initWithBytes:ggml_metallib_start length:(ggml_metallib_end-ggml_metallib_start) encoding:NSUTF8StringEncoding];
 #else
