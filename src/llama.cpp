@@ -6259,16 +6259,7 @@ static void llm_load_vocab(
         if (vocab.type == LLAMA_VOCAB_TYPE_BPE) {
             vocab.tokenizer_add_space_prefix = false;
             vocab.tokenizer_clean_spaces = true;
-            if (tokenizer_pre.empty()) {
-                LLAMA_LOG_WARN("%s: missing pre-tokenizer type, using: 'default'\n", __func__);
-                LLAMA_LOG_WARN("%s:                                             \n", __func__);
-                LLAMA_LOG_WARN("%s: ************************************        \n", __func__);
-                LLAMA_LOG_WARN("%s: GENERATION QUALITY WILL BE DEGRADED!        \n", __func__);
-                LLAMA_LOG_WARN("%s: CONSIDER REGENERATING THE MODEL             \n", __func__);
-                LLAMA_LOG_WARN("%s: ************************************        \n", __func__);
-                LLAMA_LOG_WARN("%s:                                             \n", __func__);
-                vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_DEFAULT;
-            } else if (tokenizer_pre == "default") {
+            if (tokenizer_pre == "default") {
                 vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_DEFAULT;
             } else if (
                     tokenizer_pre == "llama3"   ||
@@ -6370,7 +6361,8 @@ static void llm_load_vocab(
                 vocab.tokenizer_add_bos = true;
                 vocab.tokenizer_clean_spaces = false;
             } else {
-                throw std::runtime_error(format("unknown pre-tokenizer type: '%s'", tokenizer_pre.c_str()));
+                LLAMA_LOG_WARN("%s: missing or unrecognized pre-tokenizer type, using: 'default'\n", __func__);
+                vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_DEFAULT;
             }
         } else if (vocab.type == LLAMA_VOCAB_TYPE_SPM) {
             vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_DEFAULT;
