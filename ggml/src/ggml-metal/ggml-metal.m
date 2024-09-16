@@ -1890,27 +1890,23 @@ static void ggml_metal_encode_node(
                 // to the matrix-vector kernel
                 int ne11_mm_min = 1;
 
-#if 0
                 // the numbers below are measured on M2 Ultra for 7B and 13B models
                 // these numbers do not translate to other devices or model sizes
                 // TODO: need to find a better approach
-                        if ([device.name isEqualToString:@"Apple M2 Ultra"]) {
-                            switch (src0t) {
-                                case GGML_TYPE_F16:  ne11_mm_min = 2;  break;
-                                case GGML_TYPE_Q8_0: ne11_mm_min = 7;  break;
-                                case GGML_TYPE_Q2_K: ne11_mm_min = 15; break;
-                                case GGML_TYPE_Q3_K: ne11_mm_min = 7;  break;
-                                case GGML_TYPE_Q4_0:
-                                case GGML_TYPE_Q4_1: ne11_mm_min = 15; break;
-                                case GGML_TYPE_Q4_K: ne11_mm_min = 11; break;
-                                case GGML_TYPE_Q5_0:                          // not tested yet
-                                case GGML_TYPE_Q5_1: ne11_mm_min = 13; break; // not tested yet
-                                case GGML_TYPE_Q5_K: ne11_mm_min = 7;  break;
-                                case GGML_TYPE_Q6_K: ne11_mm_min = 7;  break;
-                                default:             ne11_mm_min = 1;  break;
-                            }
+                        switch (src0t) {
+                            case GGML_TYPE_F16:  ne11_mm_min = 2;  break;
+                            case GGML_TYPE_Q8_0: ne11_mm_min = 7;  break;
+                            case GGML_TYPE_Q2_K: ne11_mm_min = 15; break;
+                            case GGML_TYPE_Q3_K: ne11_mm_min = 7;  break;
+                            case GGML_TYPE_Q4_0:
+                            case GGML_TYPE_Q4_1: ne11_mm_min = 15; break;
+                            case GGML_TYPE_Q4_K: ne11_mm_min = 11; break;
+                            case GGML_TYPE_Q5_0:                          // not tested yet
+                            case GGML_TYPE_Q5_1: ne11_mm_min = 13; break; // not tested yet
+                            case GGML_TYPE_Q5_K: ne11_mm_min = 7;  break;
+                            case GGML_TYPE_Q6_K: ne11_mm_min = 7;  break;
+                            default:             ne11_mm_min = 1;  break;
                         }
-#endif
 
                         // for now the matrix-matrix multiplication kernel only works on A14+/M1+ SoCs
                         // AMD GPU and older A-chips will reuse matrix-vector multiplication kernel
