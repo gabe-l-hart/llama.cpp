@@ -1,3 +1,5 @@
+#ifdef GGML_USE_BLAS
+
 #include "ggml-impl.h"
 #include "ggml-blas.h"
 #include "ggml-backend-impl.h"
@@ -512,3 +514,5 @@ ggml_backend_reg_t ggml_backend_blas_reg(void) {
 
     return &ggml_backend_blas_reg;
 }
+
+#endif
