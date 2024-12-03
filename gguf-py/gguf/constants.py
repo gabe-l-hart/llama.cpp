@@ -165,8 +165,7 @@ class Keys:
         PROJ_BIAS      = "{arch}.ssm.proj_bias"
 
     class HybridMamba:
-        MAMBA_VERSION      = "{arch}.mamba.version"
-        ATTN_LAYER_INDICES = "{arch}.attn.layers"
+        ATTN_LAYER_INDICES = "{arch}.attention.layer_indices"
 
     class WKV:
         HEAD_SIZE = "{arch}.wkv.head_size"
@@ -268,7 +267,7 @@ class MODEL_ARCH(IntEnum):
     RWKV6QWEN2       = auto()
     MAMBA            = auto()
     MAMBA2           = auto()
-    JAMBA        = auto()
+    BAMBA            = auto()
     XVERSE           = auto()
     COMMAND_R        = auto()
     COHERE2          = auto()
@@ -458,7 +457,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.RWKV6QWEN2:       "rwkv6qwen2",
     MODEL_ARCH.MAMBA:            "mamba",
     MODEL_ARCH.MAMBA2:           "mamba2",
-    MODEL_ARCH.JAMBA:            "jamba",
+    MODEL_ARCH.BAMBA:            "bamba",
     MODEL_ARCH.XVERSE:           "xverse",
     MODEL_ARCH.COMMAND_R:        "command-r",
     MODEL_ARCH.COHERE2:          "cohere2",
@@ -1195,7 +1194,7 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.SSM_NORM,
         MODEL_TENSOR.SSM_OUT,
     ],
-    MODEL_ARCH.JAMBA: [
+    MODEL_ARCH.BAMBA: [
         MODEL_TENSOR.TOKEN_EMBD,
         MODEL_TENSOR.OUTPUT_NORM,
         MODEL_TENSOR.OUTPUT,
