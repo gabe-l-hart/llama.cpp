@@ -4125,3 +4125,12 @@ bool llama_model_is_recurrent(const struct llama_model * model) {
             return false;
     }
 }
+
+bool llama_model_is_hybrid(const struct llama_model * model) {
+    switch (model->arch) {
+        case LLM_ARCH_BAMBA:
+            return true;
+        default:
+            return false;
+    }
+}
