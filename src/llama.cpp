@@ -887,15 +887,16 @@ static struct ggml_tensor * llm_build_mamba2(
                     int32_t   kv_head,
                     int32_t   n_kv,
          const llm_build_cb & cb,
-                    int       il) {
+                    int       il,
+                    bool      hybrid = false) {
     const llama_model    & model   = lctx.model;
     const llama_hparams  & hparams = model.hparams;
-    const llama_kv_cache & kv      = lctx.kv_self;
+    const llama_kv_cache & kv      = hybrid ? lctx.kv_hybrid : lctx.kv_self;
     const int64_t d_conv  = hparams.ssm_d_conv;
     const int64_t d_inner = hparams.ssm_d_inner;
     const int64_t d_state = hparams.ssm_d_state;
     const int64_t n_head  = hparams.ssm_dt_rank;
-    const int64_t head_dim = d_inner / n_head;
+    const int64_t head_dim = hparams.ssm_head_dim == 0 ? d_inner / n_head : hparams.ssm_head_dim;
     const int64_t n_group = hparams.ssm_n_group;
     const int64_t n_seqs  = batch.n_seqs;
 
@@ -911,11 +912,11 @@ static struct ggml_tensor * llm_build_mamba2(
     // (ab)using the KV cache to store the states
     struct ggml_tensor * conv = llm_build_rs(ctx,
             graph, conv_states_all, state_copy, rs_zero,
-            hparams.n_embd_k_s(), kv.size, kv_head, n_kv, n_seqs);
+            hparams.n_embd_k_s(il), kv.size, kv_head, n_kv, n_seqs);
     conv = ggml_reshape_3d(ctx, conv, d_conv - 1, d_inner + 2*n_group*d_state, n_seqs);
     struct ggml_tensor * ssm = llm_build_rs(ctx,
             graph, ssm_states_all, state_copy, rs_zero,
-            hparams.n_embd_v_s(), kv.size, kv_head, n_kv, n_seqs, true);
+            hparams.n_embd_v_s(il), kv.size, kv_head, n_kv, n_seqs, true);
     ssm = ggml_reshape_4d(ctx, ssm, d_state, head_dim, n_head, kv.size);
 
     // {n_embd, n_tokens} => {n_embd, n_seq_tokens, n_seqs}
