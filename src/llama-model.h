@@ -369,3 +369,6 @@ private:
 };
 
 const char * llm_type_name(llm_type type);
+
+bool llm_arch_is_recurrent(const llm_arch& arch);
+bool llm_arch_is_hybrid(const llm_arch& arch);

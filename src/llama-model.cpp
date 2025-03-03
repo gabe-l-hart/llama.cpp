@@ -4114,8 +4114,8 @@ llama_token llama_model_decoder_start_token(const struct llama_model * model) {
     return model->hparams.dec_start_token_id;
 }
 
-bool llama_model_is_recurrent(const struct llama_model * model) {
-    switch (model->arch) {
+bool llm_arch_is_recurrent(const llm_arch & arch) {
+    switch (arch) {
         case LLM_ARCH_MAMBA:
         case LLM_ARCH_MAMBA2:
         case LLM_ARCH_RWKV6:
@@ -4126,11 +4126,19 @@ bool llama_model_is_recurrent(const struct llama_model * model) {
     }
 }
 
-bool llama_model_is_hybrid(const struct llama_model * model) {
-    switch (model->arch) {
+bool llama_model_is_recurrent(const struct llama_model * model) {
+    return llm_arch_is_recurrent(model->arch);
+}
+
+bool llm_arch_is_hybrid(const llm_arch & arch) {
+    switch (arch) {
         case LLM_ARCH_BAMBA:
             return true;
         default:
             return false;
     }
+}
+
+bool llama_model_is_hybrid(const struct llama_model * model) {
+    return llm_arch_is_hybrid(model->arch);
 }
