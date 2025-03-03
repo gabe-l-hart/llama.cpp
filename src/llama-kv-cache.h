@@ -102,7 +102,8 @@ bool llama_kv_cache_init(
                     ggml_type   type_k,
                     ggml_type   type_v,
                      uint32_t   kv_size,
-                         bool   offload);
+                         bool   offload,
+                         bool   recurrent);
 
 // find an empty slot of size "n_tokens" in the cache
 // updates the cache head

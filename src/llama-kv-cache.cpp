@@ -23,14 +23,15 @@ bool llama_kv_cache_init(
                          ggml_type   type_k,
                          ggml_type   type_v,
                           uint32_t   kv_size,
-                              bool   offload) {
+                              bool   offload,
+                              bool   recurrent) {
     const struct llama_hparams & hparams = model.hparams;
 
     const int32_t n_layer = hparams.n_layer;
 
     cache.has_shift = false;
 
-    cache.recurrent = llama_model_is_recurrent(&model);
+    cache.recurrent = recurrent;
     cache.v_trans   = !cache.recurrent && !cparams.flash_attn;
     cache.can_shift = model.arch != LLM_ARCH_DEEPSEEK2; // not supported due to MLA
 
@@ -72,8 +73,8 @@ bool llama_kv_cache_init(
     cache.v_l.reserve(n_layer);
 
     for (int i = 0; i < n_layer; i++) {
-        const uint32_t n_embd_k_gqa = hparams.n_embd_k_gqa(i) + hparams.n_embd_k_s();
-        const uint32_t n_embd_v_gqa = hparams.n_embd_v_gqa(i) + hparams.n_embd_v_s();
+        const uint32_t n_embd_k_gqa = hparams.n_embd_k_gqa(i) + hparams.n_embd_k_s(i);
+        const uint32_t n_embd_v_gqa = hparams.n_embd_v_gqa(i) + hparams.n_embd_v_s(i);
 
         LLAMA_LOG_DEBUG("%s: layer %d: n_embd_k_gqa = %d, n_embd_v_gqa = %d\n", __func__, i, n_embd_k_gqa, n_embd_v_gqa);
 
@@ -91,8 +92,17 @@ bool llama_kv_cache_init(
             return false;
         }
 
-        ggml_tensor * k = ggml_new_tensor_1d(ctx, type_k, n_embd_k_gqa*kv_size);
-        ggml_tensor * v = ggml_new_tensor_1d(ctx, type_v, n_embd_v_gqa*kv_size);
+        // If this is a hybrid model, there will be two caches, one for
+        // recurrent layers and one for attention layers. The tensors in the
+        // cache only need to be fully allocated for the correct layers.
+        const uint32_t tensor_dim = (
+            (cache.recurrent && hparams.recurrent_layer(i)) ||
+            (!cache.recurrent && !hparams.recurrent_layer(i))
+            ? kv_size : 0
+        );
+
+        ggml_tensor * k = ggml_new_tensor_1d(ctx, type_k, n_embd_k_gqa*tensor_dim);
+        ggml_tensor * v = ggml_new_tensor_1d(ctx, type_v, n_embd_v_gqa*tensor_dim);
         ggml_format_name(k, "cache_k_l%d", i);
         ggml_format_name(v, "cache_v_l%d", i);
         cache.k_l.push_back(k);
