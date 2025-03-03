@@ -70,3 +70,7 @@ uint32_t llama_hparams::n_embd_v_s() const {
     // corresponds to Mamba's ssm_states size
     return ssm_d_state * ssm_d_inner;
 }
+
+bool llama_hparams::recurrent_layer(uint32_t il) const {
+    return recurrent_layer_arr[il];
+}

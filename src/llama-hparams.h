@@ -138,6 +138,9 @@ struct llama_hparams {
 
     // dimension of the recurrent state embeddings
     uint32_t n_embd_v_s() const;
+
+    // whether or not the given layer is recurrent (for hybrid models)
+    bool recurrent_layer(uint32_t il) const;
 };
 
 static_assert(std::is_trivially_copyable<llama_hparams>::value, "llama_hparams must be trivially copyable");
