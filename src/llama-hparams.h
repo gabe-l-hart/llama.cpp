@@ -85,12 +85,12 @@ struct llama_hparams {
     std::array<int, 4> rope_sections;
 
     // for State Space Models
-    uint32_t ssm_d_conv  = 0;
-    uint32_t ssm_d_inner = 0;
-    uint32_t ssm_d_state = 0;
-    uint32_t ssm_dt_rank = 0;
-    uint32_t ssm_n_group = 0;
-    uint32_t ssm_head_dim   = 0;
+    uint32_t ssm_d_conv   = 0;
+    uint32_t ssm_d_inner  = 0;
+    uint32_t ssm_d_state  = 0;
+    uint32_t ssm_dt_rank  = 0;
+    uint32_t ssm_n_group  = 0;
+    uint32_t ssm_head_dim = 0;
 
     // for hybrid state space models
     std::array<bool, LLAMA_MAX_LAYERS> recurrent_layer_arr;
@@ -134,10 +134,10 @@ struct llama_hparams {
 
     // dimension of the rolling state embeddings
     // corresponds to Mamba's conv_states size or RWKV's token_shift states size
-    uint32_t n_embd_k_s() const;
+    uint32_t n_embd_k_s(uint32_t il = 0) const;
 
     // dimension of the recurrent state embeddings
-    uint32_t n_embd_v_s() const;
+    uint32_t n_embd_v_s(uint32_t il = 0) const;
 
     // whether or not the given layer is recurrent (for hybrid models)
     bool recurrent_layer(uint32_t il) const;
