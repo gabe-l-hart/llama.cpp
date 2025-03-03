@@ -1188,6 +1188,7 @@ struct llm_build_context {
     const llama_cparams  & cparams;
     const llama_ubatch   & ubatch;
     const llama_kv_cache & kv_self;
+    const llama_kv_cache & kv_hybrid;
 
     const int64_t n_embd;
     const int64_t n_layer;
@@ -1212,11 +1213,14 @@ struct llm_build_context {
     const float norm_rms_eps;
 
     const int32_t n_tokens;
-    const int32_t n_kv;     // size of KV cache to consider (n_kv <= kv_self.size)
+    const int32_t n_kv;        // size of KV cache to consider (n_kv <= kv_self.size)
+    const int32_t n_kv_hybrid; // size of KV cache to consider (n_kv_hybrid <= kv_hybrid.size)
     const int32_t n_outputs;
     const int32_t n_outputs_enc;
-    const int32_t kv_head;  // index of where we store new KV data in the cache
-    const int32_t rs_zero;  // the first zero-ed recurrent state
+    const int32_t kv_head;         // index of where we store new KV data in the cache
+    const int32_t kv_head_hybrid;  // index of where we store new KV data in the hybrid cache
+    const int32_t rs_zero;         // the first zero-ed recurrent state
+    const int32_t rs_zero_hybrid;  // the first hybrid zero-ed recurrent state
     const int32_t n_ctx_orig;
 
     const bool flash_attn;
@@ -1242,6 +1246,7 @@ struct llm_build_context {
         cparams          (lctx.cparams),
         ubatch           (ubatch),
         kv_self          (lctx.kv_self),
+        kv_hybrid        (lctx.kv_hybrid),
         n_embd           (hparams.n_embd),
         n_layer          (hparams.n_layer),
         n_rot            (hparams.n_rot),
@@ -1264,10 +1269,13 @@ struct llm_build_context {
         norm_rms_eps     (hparams.f_norm_rms_eps),
         n_tokens         (ubatch.n_tokens),
         n_kv             (worst_case ? kv_self.size : kv_self.n),
+        n_kv_hybrid      (worst_case ? kv_hybrid.size : kv_hybrid.n),
         n_outputs        (worst_case ? n_tokens : lctx.n_outputs),
         n_outputs_enc    (worst_case ? n_tokens : lctx.embd_enc.size() / hparams.n_embd),
         kv_head          (worst_case ? (kv_self.recurrent ? 0 : kv_self.size - n_tokens) : kv_self.head),
+        kv_head_hybrid   (worst_case ? (kv_hybrid.recurrent ? 0 : kv_hybrid.size - n_tokens) : kv_hybrid.head),
         rs_zero          (kv_self.rs_z),
+        rs_zero_hybrid   (kv_hybrid.rs_z),
         n_ctx_orig       (cparams.n_ctx_orig_yarn),
         flash_attn       (cparams.flash_attn),
         pooling_type     (cparams.pooling_type),
@@ -1489,8 +1497,8 @@ struct llm_build_context {
         return lctx.inp_cls;
     }
 
-    struct ggml_tensor * build_inp_s_copy() {
-        lctx.inp_s_copy = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, n_kv);
+    struct ggml_tensor * build_inp_s_copy(bool hybrid = false) {
+        lctx.inp_s_copy = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, hybrid ? n_kv_hybrid : n_kv);
         cb(lctx.inp_s_copy, "inp_s_copy", -1);
         ggml_set_input(lctx.inp_s_copy);
         return lctx.inp_s_copy;
@@ -8629,7 +8637,7 @@ static int llama_prepare_sbatch(
     }
 
     lctx.sbatch.from_batch(batch, n_embd,
-        /* simple_split */ !lctx.kv_self.recurrent,
+        /* simple_split */ !(lctx.kv_self.recurrent || (llama_model_is_hybrid(&model) && lctx.kv_hybrid.recurrent)),
         /* logits_all   */ n_outputs == n_tokens_all);
 
     // reserve output buffer
@@ -8644,19 +8652,22 @@ static int llama_prepare_sbatch(
 static int llama_prepare_ubatch(
         llama_context          & lctx,
         llama_kv_slot_restorer & kv_slot_restorer,
+        llama_kv_slot_restorer & kv_slot_restorer_hybrid,
         llama_ubatch           & ubatch,
         const uint32_t           n_outputs,
         const uint32_t           n_tokens_all) {
     GGML_ASSERT(lctx.sbatch.n_tokens > 0);
 
-    auto       & kv_self = lctx.kv_self;
-    const auto & cparams = lctx.cparams;
-    const auto & hparams = lctx.model.hparams;
+    auto       & kv_self   = lctx.kv_self;
+    auto       & kv_hybrid = lctx.kv_hybrid;
+    const auto & cparams   = lctx.cparams;
+    const auto & hparams   = lctx.model.hparams;
+    const bool   hybrid    = llama_model_is_hybrid(&lctx.model);
 
     // this indicates we are doing pooled embedding, so we ignore batch.logits and output all tokens
     const bool embd_pooled = cparams.embeddings && cparams.pooling_type != LLAMA_POOLING_TYPE_NONE;
 
-    if (lctx.kv_self.recurrent) {
+    if (lctx.kv_self.recurrent || (hybrid && kv_hybrid.recurrent)) {
         if (embd_pooled) {
             // Pooled embeddings cannot be split across ubatches (yet)
             ubatch = lctx.sbatch.split_seq(cparams.n_ubatch);
@@ -8701,7 +8712,15 @@ static int llama_prepare_ubatch(
             return 1;
         }
         kv_slot_restorer.save(slot);
+        if (hybrid) {
+            const auto slot_hybrid = llama_kv_cache_find_slot(lctx.kv_hybrid, ubatch);
+            if (!slot_hybrid) {
+                return 1;
+            }
+            kv_slot_restorer_hybrid.save(slot_hybrid);
+        }
 
+        // TODO: Update this clause for hybrid recurrent models
         if (!kv_self.recurrent) {
             // a heuristic, to avoid attending the full cache if it is not yet utilized
             // after enough generations, the benefit from this heuristic disappears
@@ -8753,6 +8772,11 @@ static int llama_decode_impl(
     auto & kv_self = lctx.kv_self;
     llama_kv_slot_restorer kv_slot_restorer(kv_self);
 
+    // Only used for hybrid-recurrent models (e.g. Bamba)
+    const bool hybrid = llama_model_is_hybrid(&model);
+    auto & kv_hybrid = lctx.kv_hybrid;
+    llama_kv_slot_restorer kv_slot_restorer_hybrid(kv_hybrid);
+
     const int64_t n_embd  = hparams.n_embd;
     const int64_t n_vocab = vocab.n_tokens();
 
@@ -8769,7 +8793,7 @@ static int llama_decode_impl(
     while (lctx.sbatch.n_tokens > 0) {
         llama_ubatch ubatch;
         {
-            const int ret = llama_prepare_ubatch(lctx, kv_slot_restorer, ubatch, n_outputs, batch.n_tokens);
+            const int ret = llama_prepare_ubatch(lctx, kv_slot_restorer, kv_slot_restorer_hybrid, ubatch, n_outputs, batch.n_tokens);
             if (ret != 0) {
                 return ret;
             }
@@ -8819,6 +8843,9 @@ static int llama_decode_impl(
         const auto compute_status = llama_graph_compute(lctx, gf, n_threads, threadpool);
         if (compute_status != GGML_STATUS_SUCCESS) {
             kv_slot_restorer.restore(kv_self);
+            if (hybrid) {
+                kv_slot_restorer_hybrid.restore(kv_hybrid);
+            }
             switch (compute_status) {
                 case GGML_STATUS_ABORTED:
                     return 2;
@@ -8830,13 +8857,20 @@ static int llama_decode_impl(
             }
         }
 
-        // update the kv ring buffer
+        // update the kv ring buffer (s)
         {
             kv_self.head += ubatch.n_tokens;
 
             // Ensure kv cache head points to a valid index.
             if (kv_self.head >= kv_self.size) {
                 kv_self.head = 0;
+            }
+
+            if (hybrid) {
+                kv_hybrid.head += ubatch.n_tokens;
+                if (kv_hybrid.head >= kv_hybrid.size) {
+                    kv_hybrid.head = 0;
+                }
             }
         }
 
@@ -8944,7 +8978,7 @@ static int llama_decode_impl(
     // wait for the computation to finish (automatically done when obtaining the model output)
     //llama_synchronize(&lctx);
 
-    // decide if we need to defrag the kv cache
+    // decide if we need to defrag the kv cache(s)
     if (cparams.causal_attn && cparams.defrag_thold > 0.0f) {
         // - do not defrag small contexts (i.e. < 2048 tokens)
         // - count the padding towards the number of used tokens
@@ -8955,6 +8989,13 @@ static int llama_decode_impl(
             LLAMA_LOG_DEBUG("%s: fragmentation: %.2f - requesting defrag\n", __func__, fragmentation);
 
             llama_kv_cache_defrag(kv_self);
+        }
+
+        if (hybrid) {
+            const float fragmentation = kv_hybrid.n >= 128 ? 1.0f - float(kv_hybrid.used)/float(kv_hybrid.n) : 0.0f;
+            if (fragmentation > cparams.defrag_thold) {
+                llama_kv_cache_defrag(kv_hybrid);
+            }
         }
     }
 
@@ -9824,14 +9865,23 @@ struct llama_context * llama_init_from_model(
     ctx->is_encoding = llama_model_has_encoder(model);
 
     uint32_t kv_size = cparams.n_ctx;
+    uint32_t kv_size_hybrid = 0;
     ggml_type type_k = params.type_k;
     ggml_type type_v = params.type_v;
+    const bool recurrent = llama_model_is_recurrent(model);
+    const bool hybrid = llama_model_is_hybrid(model);
 
     // Mamba only needs a constant number of KV cache cells per sequence
-    if (llama_model_is_recurrent(model)) {
+    if (recurrent) {
         // Mamba needs at least as many KV cells as there are sequences kept at any time
-        kv_size = std::max((uint32_t) 1, params.n_seq_max);
+        // NOTE: Hybrid models will use the hybrid cache for the SSM layers
+        if (hybrid) {
+            kv_size_hybrid = std::max((uint32_t) 1, params.n_seq_max);
+        } else {
+            kv_size = std::max((uint32_t) 1, params.n_seq_max);
+        }
         // it's probably best to keep as much precision as possible for the states
+        // TODO: should types be different for the two caches?
         type_k = GGML_TYPE_F32; // required by ggml_ssm_conv for Mamba's conv_states
         type_v = GGML_TYPE_F32; // required by ggml_ssm_scan for Mamba's ssm_states
     }
@@ -9888,25 +9938,45 @@ struct llama_context * llama_init_from_model(
 
         llama_set_abort_callback(ctx, params.abort_callback, params.abort_callback_data);
 
-        if (!llama_kv_cache_init(ctx->kv_self, ctx->model, ctx->cparams, type_k, type_v, kv_size, cparams.offload_kqv)) {
+        if (!llama_kv_cache_init(ctx->kv_self, ctx->model, ctx->cparams, type_k, type_v, kv_size, cparams.offload_kqv, recurrent && !hybrid)) {
             LLAMA_LOG_ERROR("%s: llama_kv_cache_init() failed for self-attention cache\n", __func__);
             llama_free(ctx);
             return nullptr;
         }
 
         {
+            // Log cache memory usage
             size_t memory_size_k = 0;
             size_t memory_size_v = 0;
-
             for (auto & k : ctx->kv_self.k_l) {
                 memory_size_k += ggml_nbytes(k);
             }
-
             for (auto & v : ctx->kv_self.v_l) {
                 memory_size_v += ggml_nbytes(v);
             }
-
             LLAMA_LOG_INFO("%s: KV self size  = %7.2f MiB, K (%s): %7.2f MiB, V (%s): %7.2f MiB\n", __func__,
+                      (float)(memory_size_k + memory_size_v) / (1024.0f * 1024.0f),
+                ggml_type_name(type_k), (float)memory_size_k / (1024.0f * 1024.0f),
+                ggml_type_name(type_v), (float)memory_size_v / (1024.0f * 1024.0f));
+        }
+
+        // For hybrid models, initialize the hybrid kv cache
+        if (kv_size_hybrid > 0 && !llama_kv_cache_init(ctx->kv_hybrid, ctx->model, ctx->cparams, type_k, type_v, kv_size_hybrid, cparams.offload_kqv, true)) {
+            LLAMA_LOG_ERROR("%s: llama_kv_cache_init() failed for hybrid self-attention cache\n", __func__);
+            llama_free(ctx);
+            return nullptr;
+        }
+        {
+            // Log hybrid cache memory usage
+            size_t memory_size_k = 0;
+            size_t memory_size_v = 0;
+            for (auto & k : ctx->kv_hybrid.k_l) {
+                memory_size_k += ggml_nbytes(k);
+            }
+            for (auto & v : ctx->kv_hybrid.v_l) {
+                memory_size_v += ggml_nbytes(v);
+            }
+            LLAMA_LOG_INFO("%s: KV hybrid size  = %7.2f MiB, K (%s): %7.2f MiB, V (%s): %7.2f MiB\n", __func__,
                       (float)(memory_size_k + memory_size_v) / (1024.0f * 1024.0f),
                 ggml_type_name(type_k), (float)memory_size_k / (1024.0f * 1024.0f),
                 ggml_type_name(type_v), (float)memory_size_v / (1024.0f * 1024.0f));
