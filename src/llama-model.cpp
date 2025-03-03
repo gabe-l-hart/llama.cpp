@@ -439,6 +439,10 @@ void llama_model::load_hparams(llama_model_loader & ml) {
     std::fill(hparams.n_head_arr.begin(),    hparams.n_head_arr.end(),    0);
     std::fill(hparams.n_head_kv_arr.begin(), hparams.n_head_kv_arr.end(), 0);
     std::fill(hparams.n_ff_arr.begin(),      hparams.n_ff_arr.end(),      0);
+    std::fill(
+        hparams.recurrent_layer_arr.begin(),
+        hparams.recurrent_layer_arr.end(),
+        llm_arch_is_recurrent(ml.get_arch()));
 
     ml.get_key_or_arr(LLM_KV_FEED_FORWARD_LENGTH,  hparams.n_ff_arr,   hparams.n_layer, false);
     ml.get_key_or_arr(LLM_KV_ATTENTION_HEAD_COUNT, hparams.n_head_arr, hparams.n_layer, false);
@@ -942,6 +946,41 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                         } break;
                     default: type = LLM_TYPE_UNKNOWN;
                 }
+            } break;
+        case LLM_ARCH_BAMBA:
+            {
+                // Mamba2 parameters
+                ml.get_key(LLM_KV_SSM_CONV_KERNEL,    hparams.ssm_d_conv);
+                ml.get_key(LLM_KV_SSM_INNER_SIZE,     hparams.ssm_d_inner);
+                ml.get_key(LLM_KV_SSM_STATE_SIZE,     hparams.ssm_d_state);
+                ml.get_key(LLM_KV_SSM_TIME_STEP_RANK, hparams.ssm_dt_rank);
+                ml.get_key(LLM_KV_SSM_GROUP_COUNT,    hparams.ssm_n_group);
+                ml.get_key(LLM_KV_SSM_HEAD_DIM,       hparams.ssm_head_dim);
+
+                // Zero-out n_head_arr and n_head_kv_arr since SSM layers don't
+                // have attention heads. We'll set them correctly below once we
+                // know which layers are attention layers
+                // NOTE: It's important that this happens after n_embd_head_[kv]
+                //  are set above!
+                const auto n_head_attn = hparams.n_head();
+                const auto n_head_kv_attn = hparams.n_head_kv();
+                std::fill(hparams.n_head_arr.begin(), hparams.n_head_arr.end(), 0);
+                std::fill(hparams.n_head_kv_arr.begin(), hparams.n_head_kv_arr.end(), 0);
+
+                // Attention params
+                std::fill(hparams.recurrent_layer_arr.begin(), hparams.recurrent_layer_arr.end(), true);
+                std::vector<uint32_t> attn_layer_indices;
+                ml.get_arr(LLM_KV_ATTENTION_LAYER_INDICES, attn_layer_indices);
+                for (const auto attn_idx : attn_layer_indices) {
+                    GGML_ASSERT(attn_idx < hparams.n_layer);
+                    hparams.recurrent_layer_arr[attn_idx] = false;
+                    // Correctly set n_head and n_head_kv for attention layers
+                    hparams.n_head_arr[attn_idx] = n_head_attn;
+                    hparams.n_head_kv_arr[attn_idx] = n_head_kv_attn;
+                }
+
+                // Feed forward params
+                ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
             } break;
         case LLM_ARCH_XVERSE:
             {
