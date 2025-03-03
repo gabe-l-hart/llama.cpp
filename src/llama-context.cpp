@@ -353,8 +353,11 @@ void llama_set_inputs(llama_context & lctx, const llama_ubatch & ubatch) {
         }
     }
 
-    if (kv_self.recurrent) {
-        const int64_t n_kv = kv_self.n;
+    const bool hybrid = llama_model_is_hybrid(&lctx.model);
+    auto& kv_hybrid = lctx.kv_hybrid;
+    if (kv_self.recurrent || (hybrid && kv_hybrid.recurrent)) {
+        auto& kv_recurrent = hybrid ? kv_hybrid : lctx.kv_self;
+        const int64_t n_kv = kv_recurrent.n;
 
         if (lctx.inp_s_copy) {
             GGML_ASSERT(ggml_backend_buffer_is_host(lctx.inp_s_copy->buffer));
@@ -362,14 +365,14 @@ void llama_set_inputs(llama_context & lctx, const llama_ubatch & ubatch) {
 
             // assuming copy destinations ALWAYS happen ONLY on the cells between head and head+n
             for (uint32_t i = 0; i < n_kv; ++i) {
-                const uint32_t  cell_id = i + kv_self.head;
-                llama_kv_cell & kv_cell = lctx.kv_self.cells[cell_id];
+                const uint32_t  cell_id = i + kv_recurrent.head;
+                llama_kv_cell & kv_cell = kv_recurrent.cells[cell_id];
 
                 if (kv_cell.src < 0) {
-                    GGML_ASSERT(kv_self.rs_z >= 0); // Need a valid zero-ed cell as a source
-                    kv_cell.src = kv_self.rs_z;
+                    GGML_ASSERT(kv_recurrent.rs_z >= 0); // Need a valid zero-ed cell as a source
+                    kv_cell.src = kv_recurrent.rs_z;
                 }
-                if ((uint32_t) kv_cell.src >= kv_self.size) {
+                if ((uint32_t) kv_cell.src >= kv_recurrent.size) {
                     // ignore out-of-bound sources
                     kv_cell.src = cell_id;
                 }
