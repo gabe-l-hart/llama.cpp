@@ -3639,7 +3639,7 @@ class Mamba2Model(Model):
             # (D is also unsqueezed, but for more straightforward broadcast internally)
             data_torch = data_torch.reshape((*data_torch.shape, 1))
         elif self.match_model_tensor_name(new_name, gguf.MODEL_TENSOR.SSM_NORM, bid):
-            return data_torch.reshape((self.n_group, self.d_inner // self.n_group))
+            data_torch = data_torch.reshape((self.n_group, self.d_inner // self.n_group))
 
         if name.endswith(".A_log"):
             logger.debug("A_log --> A ==> " + new_name)
@@ -3753,18 +3753,6 @@ class BambaModel(Mamba2Model):
                 yield llama_new_name, data_torch
         else:
             yield self.map_tensor_name(name), data_torch
-
-
-    def reshape_tensors(
-        self, data_torch: Tensor, new_name: str, bid: int | None,
-    ) -> Tensor:
-        if bid in self._ssm_layers:
-            return super().reshape_tensors(data_torch, new_name, bid)
-        elif bid in self._attn_layers:
-            return self._transformer_model_class.reshape_tensors(
-                self, data_torch, new_name, bid
-            )
-        return data_torch
 
 
 @Model.register("CohereForCausalLM")
