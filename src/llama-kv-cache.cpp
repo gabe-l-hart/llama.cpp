@@ -27,7 +27,9 @@ bool llama_kv_cache_unified::init(
 
     recurrent = llama_model_is_recurrent(&model);
     v_trans   = !recurrent && !cparams.flash_attn;
-    can_shift = !recurrent;
+    can_shift = true; // TODO: In the mamba2 PR, the recurrent check was removed.
+                      // In other changes, the DeepSeek2 check was removed, so
+                      // it seems this should always be true?
 
     LLAMA_LOG_INFO("%s: kv_size = %d, offload = %d, type_k = '%s', type_v = '%s', n_layer = %d, can_shift = %d\n",
             __func__, kv_size, offload, ggml_type_name(type_k), ggml_type_name(type_v), n_layer, can_shift);
@@ -661,6 +663,15 @@ bool llama_kv_cache_unified::find_slot(
                 const llama_seq_id seq_id = ubatch.seq_id[s][j];
                 cell.seq_id.insert(seq_id);
                 cells[seq_id].tail = cell_id;
+            }
+        }
+
+        // Find first to-be-cleared cell
+        rs_z = -1;
+        for (int i = min; i <= max; ++i) {
+            if (cells[i].src == -1) {
+                rs_z = i;
+                break;
             }
         }
 

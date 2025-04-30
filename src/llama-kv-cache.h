@@ -184,7 +184,12 @@ public:
     std::vector<ggml_tensor *> k_l; // per layer
     std::vector<ggml_tensor *> v_l;
 
+    // first zero-ed state
+    // NOTE: only used by recurrent models
+    int32_t rs_z = -1;
+
 private:
+
     ggml_type type_k = GGML_TYPE_F16;
     ggml_type type_v = GGML_TYPE_F16;
 

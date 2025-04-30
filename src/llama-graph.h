@@ -490,7 +490,6 @@ struct llm_graph_context {
     ggml_tensor * build_inp_mean() const;
     ggml_tensor * build_inp_cls() const;
     ggml_tensor * build_inp_s_copy() const;
-    ggml_tensor * build_inp_s_mask() const;
 
     ggml_tensor * build_inp_cross_embd() const;
     ggml_tensor * build_inp_pos_bucket_enc() const;
@@ -561,18 +560,17 @@ struct llm_graph_context {
     // recurrent
     //
 
-    ggml_tensor * build_copy_mask_state(
+    ggml_tensor * build_rs(
              ggml_cgraph * gf,
              ggml_tensor * s,
              ggml_tensor * state_copy,
-             ggml_tensor * state_mask,
                  int32_t   n_state,
-                 int32_t   n_seqs) const;
+                 int32_t   n_seqs,
+                 bool      avoid_copies = false) const;
 
     ggml_tensor * build_rwkv_token_shift_load(
              ggml_cgraph * gf,
              ggml_tensor * state_copy,
-             ggml_tensor * state_mask,
       const llama_ubatch & ubatch,
                      int   il) const;
 
