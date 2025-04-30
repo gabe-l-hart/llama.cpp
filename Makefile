@@ -780,10 +780,6 @@ ifdef GGML_HIP
 
 	MK_CPPFLAGS += -DGGML_USE_HIP -DGGML_USE_CUDA
 
-ifdef GGML_HIP_UMA
-	MK_CPPFLAGS += -DGGML_HIP_UMA
-endif # GGML_HIP_UMA
-
 	MK_LDFLAGS += -L$(ROCM_PATH)/lib -Wl,-rpath=$(ROCM_PATH)/lib
 	MK_LDFLAGS += -L$(ROCM_PATH)/lib64 -Wl,-rpath=$(ROCM_PATH)/lib64
 	MK_LDFLAGS += -lhipblas -lamdhip64 -lrocblas
@@ -836,7 +832,7 @@ ifdef GGML_MUSA
 	else
 		MUSA_PATH ?= /opt/musa
 	endif
-	MUSA_ARCHITECTURES ?= 21;22
+	MUSA_ARCHITECTURES ?= 21;22;31
 
 	MK_CPPFLAGS += -DGGML_USE_MUSA -DGGML_USE_CUDA
 	MK_LDFLAGS += -L$(MUSA_PATH)/lib -Wl,-rpath=$(MUSA_PATH)/lib

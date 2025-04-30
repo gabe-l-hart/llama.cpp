@@ -4,6 +4,7 @@
 #include "llama.h"
 
 #include <ctime>
+#include <algorithm>
 
 #if defined(_MSC_VER)
 #pragma warning(disable: 4244 4267) // possible loss of data
@@ -37,7 +38,7 @@ static void batch_decode(llama_context * ctx, llama_batch & batch, float * outpu
     const struct llama_model * model = llama_get_model(ctx);
 
     // clear previous kv_cache values (irrelevant for embeddings)
-    llama_kv_cache_clear(ctx);
+    llama_kv_self_clear(ctx);
 
     // run model
     LOG_INF("%s: n_tokens = %d, n_seq = %d\n", __func__, batch.n_tokens, n_seq);
@@ -88,6 +89,13 @@ int main(int argc, char ** argv) {
     common_init();
 
     params.embedding = true;
+
+    // utilize the full context
+    if (params.n_batch < params.n_ctx) {
+        LOG_WRN("%s: setting batch size to %d\n", __func__, params.n_ctx);
+        params.n_batch = params.n_ctx;
+    }
+
     // For non-causal models, batch size must be equal to ubatch size
     params.n_ubatch = params.n_batch;
 
@@ -133,7 +141,6 @@ int main(int argc, char ** argv) {
 
     // max batch size
     const uint64_t n_batch = params.n_batch;
-    GGML_ASSERT(params.n_batch >= params.n_ctx);
 
     // tokenize the prompts and trim
     std::vector<std::vector<int32_t>> inputs;
