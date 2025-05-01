@@ -8729,10 +8729,9 @@ struct llm_build_starcoder2 : public llm_graph_context {
     }
 };
 
+template<bool mamba2>
 struct llm_build_mamba : public llm_graph_context {
     const llama_model & model;
-
-    virtual ~llm_build_mamba() = default;
 
     llm_build_mamba(const llama_model & model, const llm_graph_params & params, ggml_cgraph * gf) : llm_graph_context(params), model(model) {
         ggml_tensor * cur;
@@ -8751,7 +8750,11 @@ struct llm_build_mamba : public llm_graph_context {
             cb(cur, "attn_norm", il);
 
             //cur = build_mamba_layer(gf, cur, state_copy, state_mask, il);
-            cur = build_mamba_layer(gf, cur, state_copy, ubatch, il);
+            if (mamba2) {
+                cur = build_mamba2_layer(gf, cur, state_copy, ubatch, il);
+            } else {
+                cur = build_mamba_layer(gf, cur, state_copy, ubatch, il);
+            }
 
             if (il == n_layer - 1) {
                 // skip computing output for unused tokens
@@ -8788,7 +8791,7 @@ struct llm_build_mamba : public llm_graph_context {
     }
 
     // TODO: split
-    virtual ggml_tensor * build_mamba_layer(
+    ggml_tensor * build_mamba_layer(
              ggml_cgraph * gf,
              ggml_tensor * cur,
              ggml_tensor * state_copy,
@@ -8923,22 +8926,15 @@ struct llm_build_mamba : public llm_graph_context {
 
         return cur;
     }
-};
 
-
-struct llm_build_mamba2 : public llm_build_mamba {
-    llm_build_mamba2(
-        const llama_model & model,
-        const llm_graph_params & params,
-        ggml_cgraph * gf) : llm_build_mamba(model, params, gf) {}
 
     // Override to build mamba2 layers
-    virtual ggml_tensor * build_mamba_layer(
+    ggml_tensor * build_mamba2_layer(
         ggml_cgraph * gf,
         ggml_tensor * cur,
         ggml_tensor * state_copy,
     const llama_ubatch & ubatch,
-                int   il) const override {
+                int   il) const {
         const llama_kv_cache_unified * kv_self = static_cast<const llama_kv_cache_unified *>(memory);
 
         const auto kv_head = kv_self->head;
@@ -8946,7 +8942,7 @@ struct llm_build_mamba2 : public llm_build_mamba {
         const int64_t d_conv  = hparams.ssm_d_conv;
         const int64_t d_inner = hparams.ssm_d_inner;
         const int64_t d_state = hparams.ssm_d_state;
-        const int64_t n_head  = d_inner;
+        const int64_t n_head  = hparams.ssm_dt_rank;
         const int64_t head_dim = d_inner / n_head;
         const int64_t n_group = hparams.ssm_n_group;
         const int64_t n_seqs  = ubatch.n_seqs;
@@ -13201,11 +13197,11 @@ llm_graph_result_ptr llama_model::build_graph(
             } break;
         case LLM_ARCH_MAMBA:
             {
-                llm = std::make_unique<llm_build_mamba>(*this, params, gf);
+                llm = std::make_unique<llm_build_mamba<false>>(*this, params, gf);
             } break;
         case LLM_ARCH_MAMBA2:
             {
-                llm = std::make_unique<llm_build_mamba2>(*this, params, gf);
+                llm = std::make_unique<llm_build_mamba<true>>(*this, params, gf);
             } break;
         case LLM_ARCH_XVERSE:
             {
