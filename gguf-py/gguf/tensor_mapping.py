@@ -399,6 +399,7 @@ class TensorNameMap:
         MODEL_TENSOR.FFN_DOWN_SHEXP: (
             "model.layers.{bid}.mlp.shared_expert.down_proj",  # qwen2moe
             "model.layers.{bid}.mlp.shared_experts.down_proj", # deepseek deepseek2
+            "model.layers.{bid}.shared_mlp.output_linear",     # granitemoehybrid
         ),
 
         MODEL_TENSOR.ATTN_Q_NORM: (

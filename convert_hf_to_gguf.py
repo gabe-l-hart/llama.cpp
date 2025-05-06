@@ -14,7 +14,7 @@ import sys
 from enum import IntEnum
 from pathlib import Path
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Iterable, Iterator, Literal, Sequence, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, Iterable, Iterator, List, Literal, Sequence, TypeVar, cast
 from itertools import chain
 
 import math
@@ -3665,16 +3665,7 @@ class BambaModel(Mamba2Model):
         self._transformer_model_class: type[Model] = LlamaModel
 
         # Lists of which layers use ssm vs attention
-        self._attn_layers = self.hparams.get("attn_layer_indices", [])
-        if not self._attn_layers:
-            attn_period = self.hparams.get("attn_layer_period")
-            assert attn_period, "Didn't find attn_layer_indices or attn_layer_period"
-            attn_offset = self.hparams.get("attn_layer_offset")
-            assert attn_offset is not None, "No attention layer offset set with attn_layer_period"
-            self._attn_layers = [
-                i for i in range(self.block_count)
-                if i % attn_period == attn_offset
-            ]
+        self._attn_layers = self.get_attn_layres()
         self._ssm_layers = [
             i for i in range(self.block_count)
             if i not in self._attn_layers
@@ -3684,6 +3675,19 @@ class BambaModel(Mamba2Model):
         self.d_model = self.find_hparam(["hidden_size", "d_model"])
         self.n_group = self.find_hparam(["n_groups"])
         self.d_inner = self.find_hparam(["expand"]) * self.d_model
+
+    def get_attn_layres(self) -> List[int]:
+        attn_layers = self.hparams.get("attn_layer_indices", [])
+        if not attn_layers:
+            attn_period = self.hparams.get("attn_layer_period")
+            assert attn_period, "Didn't find attn_layer_indices or attn_layer_period"
+            attn_offset = self.hparams.get("attn_layer_offset")
+            assert attn_offset is not None, "No attention layer offset set with attn_layer_period"
+            attn_layers = [
+                i for i in range(self.block_count)
+                if i % attn_period == attn_offset
+            ]
+        return attn_layers
 
     def find_hparam(self, keys: Iterable[str], *args, **kwargs) -> Any:
         prefixed = []
@@ -3716,7 +3720,8 @@ class BambaModel(Mamba2Model):
 
         ## Attention params ##
         self.gguf_writer.add_attn_layer_indices(self._attn_layers)
-        self.gguf_writer.add_rope_dimension_count(self.hparams["attn_rotary_emb"])
+        if rope_dim := self.hparams.get("attn_rotary_emb"):
+            self.gguf_writer.add_rope_dimension_count(rope_dim)
         self.gguf_writer.add_head_count(self.hparams["num_attention_heads"])
         self.gguf_writer.add_head_count_kv(self.find_hparam(["num_key_value_heads", "n_head_kv"]))
 
@@ -3739,7 +3744,6 @@ class BambaModel(Mamba2Model):
     def modify_tensors(
         self, data_torch: Tensor, name: str, bid: int | None
     ) -> Iterable[tuple[str, Tensor]]:
-
         # Determine whether this is a mamaba layer or an attention layer
         if bid in self._ssm_layers:
             for mamba_new_name, data_torch in super().modify_tensors(
@@ -5032,7 +5036,84 @@ class GraniteMoeModel(GraniteModel):
                 (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_UP_EXP, bid), up),
             ]
 
+        return GraniteModel.modify_tensors(self, data_torch, name, bid)
+
+
+@Model.register("GraniteMoeSharedForCausalLM")
+class GraniteMoeSharedModel(GraniteMoeModel):
+    """Conversion for IBM's GraniteMoeSharedForCausalLM"""
+    model_arch = gguf.MODEL_ARCH.GRANITE_MOE_SHARED
+
+    def set_gguf_parameters(self):
+        """GraniteMoeShared uses GraniteMoe parameters plus the following:
+        - shared_intermediate_size
+        """
+        super().set_gguf_parameters()
+        if shared_feed_forward_length := self.hparams.get("shared_intermediate_size"):
+            self.gguf_writer.add_expert_shared_feed_forward_length(shared_feed_forward_length)
+            logger.info("gguf: (granitemoeshared) shared_feed_forward_length = %s", shared_feed_forward_length)
+
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        """In modeling_granitemoeshared, the implementation of parallel experts
+        is used. This essentially merges w1 and w3 into a single tensor with 2x
+        the hidden size that is then split during forward. To keep compatibility
+        with existing shared expert support, we pull them apart here.
+        """
+
+        if name.endswith("shared_mlp.input_linear.weight"):
+            ffn_dim = self.hparams["shared_intermediate_size"]
+            assert data_torch.shape[-2] == 2 * ffn_dim, "Merged FFN tensor size must be 2 * shared_intermediate_size"
+            gate, up = data_torch.split(ffn_dim, dim=-2)
+            return [
+                (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_GATE_SHEXP, bid), gate),
+                (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_UP_SHEXP, bid), up),
+            ]
+
+        return GraniteMoeModel.modify_tensors(self, data_torch, name, bid)
+
+
+@Model.register("GraniteMoeHybridForCausalLM")
+class GraniteMoeHybridModel(BambaModel):
+    """GraniteMoeHybrid is a hybrid SSM + MoE Attention model that uses Mamba2
+    SSM layers"""
+    model_arch = gguf.MODEL_ARCH.GRANITE_MOE_HYBRID
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._transformer_model_class = GraniteMoeSharedModel
+
+    def get_attn_layres(self):
+        if layer_types := self.hparams.get("layer_types"):
+            return [
+                i for i, typ in enumerate(layer_types)
+                if typ == "attention"
+            ]
+        return super().get_attn_layres()
+
+    def modify_tensors(
+        self, data_torch: Tensor, name: str, bid: int | None
+    ) -> Iterable[tuple[str, Tensor]]:
+
+        # In GraniteMoeHybrid, the mamba layers also have an MoE + Shared expert
+        if name.endswith("block_sparse_moe.input_linear.weight"):
+            ffn_dim = self.hparams["intermediate_size"]
+            assert data_torch.shape[-2] == 2 * ffn_dim, "Merged FFN tensor size must be 2 * intermediate_size"
+            gate, up = data_torch[..., :ffn_dim, :], data_torch[..., ffn_dim:, :]
+            return [
+                (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_GATE_EXP, bid), gate),
+                (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_UP_EXP, bid), up),
+            ]
+        if name.endswith("shared_mlp.input_linear.weight"):
+            ffn_dim = self.hparams["shared_intermediate_size"]
+            assert data_torch.shape[-2] == 2 * ffn_dim, "Merged FFN tensor size must be 2 * shared_intermediate_size"
+            gate, up = data_torch.split(ffn_dim, dim=-2)
+            return [
+                (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_GATE_SHEXP, bid), gate),
+                (self.format_tensor_name(gguf.MODEL_TENSOR.FFN_UP_SHEXP, bid), up),
+            ]
+
         return super().modify_tensors(data_torch, name, bid)
+
 
 
 @Model.register("ChameleonForConditionalGeneration")
