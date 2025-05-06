@@ -4338,7 +4338,7 @@ class Mamba2Model(TextModel):
                 hparams = json.load(f)
         super().__init__(dir_model, *args, hparams=hparams, **kwargs)
         self.d_model = self.find_hparam(["hidden_size", "d_model", "dim"])
-        self.d_inner = self.find_hparam(["intermediate_size", "d_inner"], optional=True) or 2 * d_model
+        self.d_inner = self.find_hparam(["intermediate_size", "d_inner"], optional=True) or 2 * self.d_model
         self.n_group = self.hparams.get("n_groups", 1)
 
     def set_vocab(self):
