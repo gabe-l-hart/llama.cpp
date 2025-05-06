@@ -948,6 +948,7 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 }
             } break;
         case LLM_ARCH_BAMBA:
+        case LLM_ARCH_GRANITE_MOE_HYBRID:
             {
                 // Mamba2 parameters
                 ml.get_key(LLM_KV_SSM_CONV_KERNEL,    hparams.ssm_d_conv);
@@ -980,6 +981,15 @@ void llama_model::load_hparams(llama_model_loader & ml) {
 
                 // Feed forward params
                 ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
+
+                // For Granite MoE Hybrid
+                if (arch == LLM_ARCH_GRANITE_MOE_HYBRID) {
+                    ml.get_key(LLM_KV_LOGIT_SCALE,                       hparams.f_logit_scale);
+                    ml.get_key(LLM_KV_RESIDUAL_SCALE,                    hparams.f_residual_scale);
+                    ml.get_key(LLM_KV_EMBEDDING_SCALE,                   hparams.f_embedding_scale);
+                    ml.get_key(LLM_KV_ATTENTION_SCALE,                   hparams.f_attention_scale);
+                    ml.get_key(LLM_KV_EXPERT_SHARED_FEED_FORWARD_LENGTH, hparams.n_ff_shexp);
+                }
             } break;
         case LLM_ARCH_XVERSE:
             {
@@ -2690,6 +2700,7 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                     }
                 } break;
             case LLM_ARCH_BAMBA:
+            case LLM_ARCH_GRANITE_MOE_HYBRID:
                 {
                     // mamba2 Mixer SSM params
                     // NOTE: int64_t for tensor dimensions
@@ -2753,18 +2764,32 @@ bool llama_model::load_tensors(llama_model_loader & ml) {
                             layer.bk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "bias", i), {n_embd_k_gqa_i}, llama_model_loader::TENSOR_NOT_REQUIRED);
                             layer.bv = create_tensor(tn(LLM_TENSOR_ATTN_V,   "bias", i), {n_embd_v_gqa_i}, llama_model_loader::TENSOR_NOT_REQUIRED);
                             layer.bo = create_tensor(tn(LLM_TENSOR_ATTN_OUT, "bias", i), {n_embd},         llama_model_loader::TENSOR_NOT_REQUIRED);
-
                         }
 
-                        // feed forward (w/ optional biases)
                         layer.ffn_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd}, 0);
-                        layer.rope_freqs = create_tensor(tn(LLM_TENSOR_ROPE_FREQS, "weight", i), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
-                        layer.ffn_gate = create_tensor(tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff}, 0);
-                        layer.ffn_down = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "weight", i), {  n_ff, n_embd}, 0);
-                        layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, 0);
-                        layer.ffn_gate_b = create_tensor(tn(LLM_TENSOR_FFN_GATE, "bias", i), {n_ff}, llama_model_loader::TENSOR_NOT_REQUIRED);
-                        layer.ffn_down_b = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "bias", i), {n_embd}, llama_model_loader::TENSOR_NOT_REQUIRED);
-                        layer.ffn_up_b   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "bias", i), {n_ff}, llama_model_loader::TENSOR_NOT_REQUIRED);
+                        if (n_expert > 0) {
+                            // MoE FFN
+                            layer.ffn_gate_inp  = create_tensor(tn(LLM_TENSOR_FFN_GATE_INP,  "weight", i), {n_embd, n_expert}, 0);
+                            layer.ffn_gate_exps = create_tensor(tn(LLM_TENSOR_FFN_GATE_EXPS, "weight", i), {n_embd,   n_ff, n_expert}, TENSOR_NOT_REQUIRED);
+                            layer.ffn_down_exps = create_tensor(tn(LLM_TENSOR_FFN_DOWN_EXPS, "weight", i), {  n_ff, n_embd, n_expert}, 0);
+                            layer.ffn_up_exps   = create_tensor(tn(LLM_TENSOR_FFN_UP_EXPS,   "weight", i), {n_embd,   n_ff, n_expert}, 0);
+
+                            // For Granite MoE Shared
+                            if (hparams.n_ff_shexp > 0) {
+                                layer.ffn_gate_shexp = create_tensor(tn(LLM_TENSOR_FFN_GATE_SHEXP, "weight", i), {n_embd, hparams.n_ff_shexp}, 0);
+                                layer.ffn_up_shexp   = create_tensor(tn(LLM_TENSOR_FFN_UP_SHEXP,   "weight", i), {n_embd, hparams.n_ff_shexp}, 0);
+                                layer.ffn_down_shexp = create_tensor(tn(LLM_TENSOR_FFN_DOWN_SHEXP, "weight", i), {hparams.n_ff_shexp, n_embd}, 0);
+                            }
+                        } else {
+                            // feed forward (w/ optional biases)
+                            layer.rope_freqs = create_tensor(tn(LLM_TENSOR_ROPE_FREQS, "weight", i), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                            layer.ffn_gate = create_tensor(tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff}, 0);
+                            layer.ffn_down = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "weight", i), {  n_ff, n_embd}, 0);
+                            layer.ffn_up   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, 0);
+                            layer.ffn_gate_b = create_tensor(tn(LLM_TENSOR_FFN_GATE, "bias", i), {n_ff}, llama_model_loader::TENSOR_NOT_REQUIRED);
+                            layer.ffn_down_b = create_tensor(tn(LLM_TENSOR_FFN_DOWN, "bias", i), {n_embd}, llama_model_loader::TENSOR_NOT_REQUIRED);
+                            layer.ffn_up_b   = create_tensor(tn(LLM_TENSOR_FFN_UP,   "bias", i), {n_ff}, llama_model_loader::TENSOR_NOT_REQUIRED);
+                        }
                     }
                 } break;
             case LLM_ARCH_XVERSE:
@@ -3930,7 +3955,8 @@ void llama_model::print_info() const {
     if (arch == LLM_ARCH_MINICPM ||
         arch == LLM_ARCH_GRANITE ||
         arch == LLM_ARCH_GRANITE_MOE ||
-        arch == LLM_ARCH_GRANITE_MOE_SHARED) {
+        arch == LLM_ARCH_GRANITE_MOE_SHARED ||
+        arch == LLM_ARCH_GRANITE_MOE_HYBRID) {
         LLAMA_LOG_INFO("%s: f_embedding_scale = %f\n", __func__, hparams.f_embedding_scale);
         LLAMA_LOG_INFO("%s: f_residual_scale  = %f\n", __func__, hparams.f_residual_scale);
         LLAMA_LOG_INFO("%s: f_attention_scale = %f\n", __func__, hparams.f_attention_scale);
@@ -4106,6 +4132,7 @@ enum llama_rope_type llama_model_rope_type(const struct llama_model * model) {
         case LLM_ARCH_RWKV6:
         case LLM_ARCH_RWKV6QWEN2:
         case LLM_ARCH_WAVTOKENIZER_DEC:
+        case LLM_ARCH_GRANITE_MOE_HYBRID:
             return LLAMA_ROPE_TYPE_NONE;
 
         // use what we call a normal RoPE, operating on pairs of consecutive head values
