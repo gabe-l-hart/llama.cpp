@@ -1050,6 +1050,9 @@ int llama_context::decode(llama_batch & inp_batch) {
     // finalize the batch processing
     kv_guard.commit();
 
+    // set to total number of outputs in the batch, for use in llama_get_logits_ith
+    n_outputs = n_outputs_all;
+
     // set output mappings
     {
         bool sorted_output = true;
