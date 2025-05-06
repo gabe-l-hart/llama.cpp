@@ -5132,6 +5132,16 @@ class GraniteMoeHybridModel(BambaModel):
         if shared_feed_forward_length := self.hparams.get("shared_intermediate_size"):
             self.gguf_writer.add_expert_shared_feed_forward_length(shared_feed_forward_length)
             logger.info("gguf: (granitemoeshared) shared_feed_forward_length = %s", shared_feed_forward_length)
+        if (n_experts := self.hparams.get("num_local_experts")) is not None:
+            self.gguf_writer.add_expert_count(n_experts)
+            logger.info(f"gguf: expert count = {n_experts}")
+        if (n_experts_used := self.hparams.get("num_experts_per_tok")) is not None:
+            self.gguf_writer.add_expert_used_count(n_experts_used)
+            logger.info(f"gguf: experts used count = {n_experts_used}")
+
+    def set_vocab(self):
+        self.hparams["pad_vocab_size_multiple"] = 8
+        super().set_vocab()
 
 
 @Model.register("ChameleonForConditionalGeneration")
