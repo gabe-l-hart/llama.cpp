@@ -1938,7 +1938,8 @@ llama_pos llama_kv_cache_recurrent::get_pos_max() const {
 }
 
 bool llama_kv_cache_recurrent::get_can_shift() const {
-    return false;
+    // shifting is trivial, the recurrent states don't care about the absolute position
+    return true;
 }
 
 uint32_t llama_kv_cache_recurrent::cell_max() const {
