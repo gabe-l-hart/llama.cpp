@@ -955,7 +955,6 @@ void llama_model::load_hparams(llama_model_loader & ml) {
                 ml.get_key(LLM_KV_SSM_STATE_SIZE,     hparams.ssm_d_state);
                 ml.get_key(LLM_KV_SSM_TIME_STEP_RANK, hparams.ssm_dt_rank);
                 ml.get_key(LLM_KV_SSM_GROUP_COUNT,    hparams.ssm_n_group);
-                ml.get_key(LLM_KV_SSM_HEAD_DIM,       hparams.ssm_head_dim);
 
                 // Zero-out n_head_arr and n_head_kv_arr since SSM layers don't
                 // have attention heads. We'll set them correctly below once we
