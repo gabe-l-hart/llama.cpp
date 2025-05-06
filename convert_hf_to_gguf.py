@@ -5115,6 +5115,24 @@ class GraniteMoeHybridModel(BambaModel):
         return super().modify_tensors(data_torch, name, bid)
 
 
+    def set_gguf_parameters(self):
+        super().set_gguf_parameters()
+        if attention_scale := self.hparams.get("attention_multiplier"):
+            self.gguf_writer.add_attention_scale(attention_scale)
+            logger.info("gguf: (granite) attention_scale = %s", attention_scale)
+        if embedding_scale := self.hparams.get("embedding_multiplier"):
+            self.gguf_writer.add_embedding_scale(embedding_scale)
+            logger.info("gguf: (granite) embedding_scale = %s", embedding_scale)
+        if residual_scale := self.hparams.get("residual_multiplier"):
+            self.gguf_writer.add_residual_scale(residual_scale)
+            logger.info("gguf: (granite) residual_scale = %s", residual_scale)
+        if logits_scale := self.hparams.get("logits_scaling"):
+            self.gguf_writer.add_logit_scale(logits_scale)
+            logger.info("gguf: (granite) logits_scale = %s", logits_scale)
+        if shared_feed_forward_length := self.hparams.get("shared_intermediate_size"):
+            self.gguf_writer.add_expert_shared_feed_forward_length(shared_feed_forward_length)
+            logger.info("gguf: (granitemoeshared) shared_feed_forward_length = %s", shared_feed_forward_length)
+
 
 @Model.register("ChameleonForConditionalGeneration")
 @Model.register("ChameleonForCausalLM")  # obsolete
