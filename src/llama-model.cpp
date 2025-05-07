@@ -4289,7 +4289,8 @@ bool llm_arch_is_recurrent(const llm_arch & arch) {
         case LLM_ARCH_BAMBA:
         case LLM_ARCH_RWKV6:
         case LLM_ARCH_RWKV6QWEN2:
-            return true;
+        case LLM_ARCH_GRANITE_MOE_HYBRID:
+        return true;
         default:
             return false;
     }
@@ -4302,6 +4303,7 @@ bool llama_model_is_recurrent(const struct llama_model * model) {
 bool llm_arch_is_hybrid(const llm_arch & arch) {
     switch (arch) {
         case LLM_ARCH_BAMBA:
+        case LLM_ARCH_GRANITE_MOE_HYBRID:
             return true;
         default:
             return false;
