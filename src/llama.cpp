@@ -5463,7 +5463,7 @@ struct llm_build_context {
                 cb(moe_out, "ffn_moe_out", il);
 
                 // For Granite MoE Shared
-                if (model.arch == LLM_ARCH_GRANITE_MOE_SHARED) {
+                if (model.arch == LLM_ARCH_GRANITE_MOE_HYBRID) {
                     ggml_tensor * ffn_shexp = llm_build_ffn(ctx0, lctx, cur,
                         model.layers[il].ffn_up_shexp,   NULL, NULL,
                         model.layers[il].ffn_gate_shexp, NULL, NULL,
