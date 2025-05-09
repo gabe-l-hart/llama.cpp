@@ -326,10 +326,10 @@ class MODEL_ARCH(IntEnum):
     GRANITE            = auto()
     GRANITE_MOE        = auto()
     GRANITE_MOE_SHARED = auto()
-    CHAMELEON        = auto()
-    WAVTOKENIZER_DEC = auto()
-    PLM              = auto()
-    BAILINGMOE       = auto()
+    CHAMELEON          = auto()
+    WAVTOKENIZER_DEC   = auto()
+    PLM                = auto()
+    BAILINGMOE         = auto()
 
 
 class VISION_PROJECTOR_TYPE(IntEnum):
