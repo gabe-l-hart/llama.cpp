@@ -326,6 +326,7 @@ class MODEL_ARCH(IntEnum):
     GRANITE            = auto()
     GRANITE_MOE        = auto()
     GRANITE_MOE_SHARED = auto()
+    GRANITE_MOE_HYBRID = auto()
     CHAMELEON          = auto()
     WAVTOKENIZER_DEC   = auto()
     PLM                = auto()
@@ -587,6 +588,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.GRANITE:            "granite",
     MODEL_ARCH.GRANITE_MOE:        "granitemoe",
     MODEL_ARCH.GRANITE_MOE_SHARED: "granitemoeshared",
+    MODEL_ARCH.GRANITE_MOE_HYBRID: "granitemoehybrid",
     MODEL_ARCH.CHAMELEON:          "chameleon",
     MODEL_ARCH.WAVTOKENIZER_DEC:   "wavtokenizer-dec",
     MODEL_ARCH.PLM:                "plm",
@@ -1949,6 +1951,31 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.OUTPUT_NORM,
         MODEL_TENSOR.OUTPUT,
         MODEL_TENSOR.ATTN_NORM,
+        MODEL_TENSOR.ATTN_Q,
+        MODEL_TENSOR.ATTN_K,
+        MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.ATTN_OUT,
+        MODEL_TENSOR.FFN_NORM,
+        MODEL_TENSOR.FFN_GATE_INP,
+        MODEL_TENSOR.FFN_GATE_EXP,
+        MODEL_TENSOR.FFN_DOWN_EXP,
+        MODEL_TENSOR.FFN_UP_EXP,
+        MODEL_TENSOR.FFN_GATE_SHEXP,
+        MODEL_TENSOR.FFN_UP_SHEXP,
+        MODEL_TENSOR.FFN_DOWN_SHEXP,
+    ],
+    MODEL_ARCH.GRANITE_MOE_HYBRID: [
+        MODEL_TENSOR.TOKEN_EMBD,
+        MODEL_TENSOR.OUTPUT_NORM,
+        MODEL_TENSOR.OUTPUT,
+        MODEL_TENSOR.ATTN_NORM,
+        MODEL_TENSOR.SSM_IN,
+        MODEL_TENSOR.SSM_CONV1D,
+        MODEL_TENSOR.SSM_DT,
+        MODEL_TENSOR.SSM_A,
+        MODEL_TENSOR.SSM_D,
+        MODEL_TENSOR.SSM_NORM,
+        MODEL_TENSOR.SSM_OUT,
         MODEL_TENSOR.ATTN_Q,
         MODEL_TENSOR.ATTN_K,
         MODEL_TENSOR.ATTN_V,
