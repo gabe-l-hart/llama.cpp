@@ -39,6 +39,11 @@ struct llama_kv_cache : public llama_memory_i {
     // TODO: remove
     virtual void set_full() = 0;
 
+    // sometimes it is useful to check whether a cache can remove a sequence
+    // before attempting to mutate the cache (eg a hybrid cache with multiple
+    // children to keep in sync)
+    virtual bool can_seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) const = 0;
+
     //
     // batch processing
     //
@@ -141,6 +146,8 @@ public:
     void defrag_sched(float thold) override;
 
     void set_full() override;
+
+    bool can_seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) const override;
 
     llama_sbatch sbatch_init(const llama_batch & batch, bool logits_all) override;
     llama_ubatch ubatch_next(llama_sbatch & sbatch, uint32_t n_ubatch, bool embd_pooled) const override;
@@ -331,6 +338,8 @@ public:
 
     void set_full() override;
 
+    bool can_seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) const override;
+
     llama_sbatch sbatch_init(const llama_batch & batch, bool logits_all) override;
     llama_ubatch ubatch_next(llama_sbatch & sbatch, uint32_t n_ubatch, bool embd_pooled) const override;
 
@@ -436,6 +445,8 @@ public:
     void defrag_sched(float thold) override;
 
     void set_full() override;
+
+    bool can_seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) const override;
 
     llama_sbatch sbatch_init(const llama_batch & batch, bool logits_all) override;
     llama_ubatch ubatch_next(llama_sbatch & sbatch, uint32_t n_ubatch, bool embd_pooled) const override;
