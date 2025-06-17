@@ -32,7 +32,7 @@ llama_kv_cache_hybrid_recurrent::llama_kv_cache_hybrid_recurrent(
     kv_attn(new llama_kv_cache_unified(
         model,
         attn_filter == nullptr ?
-            [&](int32_t il) { return !model.hparams.recurrent_layer(il); }
+            [&](int32_t il) { return model.hparams.recurrent_layer(il); }
             : attn_filter,
         attn_type_k,
         attn_type_v,

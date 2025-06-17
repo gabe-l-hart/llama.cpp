@@ -45,18 +45,16 @@ llama_kv_cache_recurrent::llama_kv_cache_recurrent(
                 /*.mem_buffer =*/ NULL,
                 /*.no_alloc   =*/ true,
             };
-
             ggml_context * ctx = ggml_init(params);
             if (!ctx) {
+                std::printf("Failed to create ggml context for kv cache\n");
                 return nullptr;
             }
-
             ctx_map[buft] = ctx;
             ctxs.emplace_back(ctx);
 
             return ctx;
         }
-
         return it->second;
     };
 
