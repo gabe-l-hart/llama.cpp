@@ -1264,7 +1264,7 @@ struct test_case {
         ggml_tensor * out             = build_graph(ctx.get());
         std::string   current_op_name = op_desc(out);
         if (!matches_filter(out, op_names_filter)) {
-            //printf("  %s: skipping\n", op_desc(out).c_str());
+            // printf("  %s: skipping\n", op_desc(out).c_str());
             return true;
         }
 
@@ -6925,6 +6925,18 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
         test_cases.emplace_back(new test_sum_rows(GGML_TYPE_F32, it));
         test_cases.emplace_back(new test_sum(GGML_TYPE_F32, it));
     }
+
+    for (int64_t d_conv : {3, 4}) {
+        for (int64_t d_inner: {1024, 1536, 2048}) {
+            test_cases.emplace_back(new test_ssm_conv(GGML_TYPE_F32, {4, d_inner, 1, 1}, {d_conv, d_inner, 1, 1}));
+            test_cases.emplace_back(new test_ssm_conv(GGML_TYPE_F32, {8, d_inner, 1, 1}, {d_conv, d_inner, 1, 1}));
+            test_cases.emplace_back(new test_ssm_conv(GGML_TYPE_F32, {4, d_inner, 4, 1}, {d_conv, d_inner, 1, 1}));
+        }
+    }
+
+    test_cases.emplace_back(new test_ssm_scan(GGML_TYPE_F32, 16, 1, 1024, 1, 32, 4)); // Mamba-1
+    test_cases.emplace_back(new test_ssm_scan(GGML_TYPE_F32, 128, 64, 16, 2, 32, 4)); // Mamba-2
+    test_cases.emplace_back(new test_ssm_scan(GGML_TYPE_F32, 256, 64,  8, 2, 32, 4)); // Falcon-H1
 
     return test_cases;
 }
