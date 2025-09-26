@@ -2008,8 +2008,10 @@ kernel void kernel_ssm_conv_f32_f32(
         device       float * dst,
         uint3 tgpig[[threadgroup_position_in_grid]],
         uint3 tpitg[[thread_position_in_threadgroup]],
-        uint3   ntg[[threads_per_threadgroup]]) {
+        uint3   ntg[[threads_per_threadgroup]],
+        ushort tiisg[[thread_index_in_simdgroup]]) {
     const int64_t ir = tgpig.x;
+    const int64_t i0 = tpitg.x;
     const int64_t i2 = tgpig.y;
     const int64_t i3 = tgpig.z;
 
@@ -2023,13 +2025,12 @@ kernel void kernel_ssm_conv_f32_f32(
     device const float * c = (device const float *) ((device const char *) src1 + ir*args.nb11);
     device       float * x = (device       float *) ((device       char *) dst  + ir*args.nb0  + i2*args.nb1  + i3*args.nb2);
 
-    float sumf = 0.0f;
-
-    for (int64_t i0 = 0; i0 < nc; ++i0) {
-        sumf += s[i0] * c[i0];
+    float sumf = s[i0] * c[i0];
+    sumf = simd_sum(sumf);
+    if (tiisg == 0) {
+        x[0] = sumf;
     }
 
-    x[0] = sumf;
 }
 
 // ref: ggml.c:ggml_compute_forward_ssm_scan_f32, Mamba-1 part
