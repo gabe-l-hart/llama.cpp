@@ -243,9 +243,6 @@ ggml_tensor * llm_graph_context_mamba::build_mamba2_layer(llm_graph_input_rs * i
         auto get_ssm_rows = [&](ggml_context * ctx, ggml_tensor * states, ggml_tensor * ids) {
             ggml_tensor * ssm = ggml_reshape_4d(ctx, states, d_state, head_dim, n_head, mctx_cur->get_size());
 
-            // Empty y that will be extended with each chunk of tokens
-            ggml_tensor * y = ggml_new_tensor_4d(ctx, x->type, x->ne[0], x->ne[1], 0, x->ne[3]);
-
             if (n_seq_tokens == 1) {
             // if (true) {
                 //DEBUG
@@ -258,9 +255,6 @@ ggml_tensor * llm_graph_context_mamba::build_mamba2_layer(llm_graph_input_rs * i
                 LLAMA_LOG_DEBUG("build_mamba2_layer(layer %d): multi-token chunk scan\n", il);
 
                 // otherwise, use the SSD formulation
-
-                // TODO: make this configurable
-                const uint32_t chunk_size = 256;
 
                 // extract the state(s) for the sequences identified by ids
                 if (ssm->ne[3] != ids->ne[0]) {
@@ -289,34 +283,49 @@ ggml_tensor * llm_graph_context_mamba::build_mamba2_layer(llm_graph_input_rs * i
 
                 // loop over all chunks
                 uint32_t repeats = n_head / n_group;
-                for (auto chunk_i = 0; chunk_i < n_seq_tokens; chunk_i += chunk_size) {
 
-                    // chunk views
+                // Empty y that will be extended with each chunk of tokens
+                ggml_tensor * y = ggml_new_tensor_4d(ctx, x->type, x->ne[0], x->ne[1], 0, x->ne[3]);
+                // TODO: make this configurable
+                const uint32_t chunk_size = 512; // default ubatch size
+                for (auto chunk_i = 0; chunk_i < n_seq_tokens; chunk_i += chunk_size) {
+                    ggml_tensor * dtA_chunk;
+                    ggml_tensor * dtX_chunk;
+                    ggml_tensor * B_chunk;
+                    ggml_tensor * C_chunk;
                     const auto chunk_size_i = std::min(chunk_size, uint32_t(n_seq_tokens - chunk_i));
-                    // slice dtA on dim 1
-                    ggml_tensor * dtA_chunk = ggml_view_3d(ctx, dtA,
-                        dtA->ne[0], chunk_size_i, dtA->ne[2],
-                        dtA->nb[1], dtA->nb[2],
-                        chunk_i * dtA->nb[1]);
+                    if (chunk_size_i == n_seq_tokens) {
+                        dtA_chunk = dtA;
+                        dtX_chunk = dtX;
+                        B_chunk = B;
+                        C_chunk = C;
+                    } else {
+                        // chunk views
+                        // slice dtA on dim 1
+                        dtA_chunk = ggml_view_3d(ctx, dtA,
+                            dtA->ne[0], chunk_size_i, dtA->ne[2],
+                            dtA->nb[1], dtA->nb[2],
+                            chunk_i * dtA->nb[1]);
+                        // slice dtX on dim 2
+                        dtX_chunk = ggml_view_4d(ctx, dtX,
+                            dtX->ne[0], dtX->ne[1], chunk_size_i, dtX->ne[3],
+                            dtX->nb[1], dtX->nb[2], dtX->nb[3],
+                            chunk_i * dtX->nb[2]);
+                        // slice B on dim 2
+                        B_chunk = ggml_view_4d(ctx, B,
+                            B->ne[0], B->ne[1], chunk_size_i, B->ne[3],
+                            B->nb[1], B->nb[2], B->nb[3],
+                            chunk_i * B->nb[2]);
+                        // slice C on dim 2
+                        C_chunk = ggml_view_4d(ctx, C,
+                            C->ne[0], C->ne[1], chunk_size_i, C->ne[3],
+                            C->nb[1], C->nb[2], C->nb[3],
+                            chunk_i * C->nb[2]);
+                    }
                     cb(dtA_chunk, "dtA_chunk", il);
-                    // slice dtX on dim 2
-                    ggml_tensor * dtX_chunk = ggml_view_4d(ctx, dtX,
-                        dtX->ne[0], dtX->ne[1], chunk_size_i, dtX->ne[3],
-                        dtX->nb[1], dtX->nb[2], dtX->nb[3],
-                        chunk_i * dtX->nb[2]);
                     cb(dtX_chunk, "dtX_chunk", il);
-                    // slice B on dim 2
-                    ggml_tensor * B_chunk = ggml_view_4d(ctx, B,
-                        B->ne[0], B->ne[1], chunk_size_i, B->ne[3],
-                        B->nb[1], B->nb[2], B->nb[3],
-                        chunk_i * B->nb[2]);
-                    cb(B_chunk, "B_chunk", il);
-                    // slice C on dim 2
-                    ggml_tensor * C_chunk = ggml_view_4d(ctx, C,
-                        C->ne[0], C->ne[1], chunk_size_i, C->ne[3],
-                        C->nb[1], C->nb[2], C->nb[3],
-                        chunk_i * C->nb[2]);
-                    cb(C_chunk, "C_chunk", il);
+                    cb(B_chunk,   "B_chunk",   il);
+                    cb(C_chunk,   "C_chunk",   il);
 
                     // step 3: compute CB
                     ggml_tensor * C_perm = ggml_permute(ctx, C_chunk, 0, 2, 1, 3); // {d_state, n_seq_tokens, n_group, n_seqs}
@@ -392,7 +401,11 @@ ggml_tensor * llm_graph_context_mamba::build_mamba2_layer(llm_graph_input_rs * i
                     cb(y_chunk, "y_chunk_updated", il);
 
                     // step 11: recurse
-                    y = ggml_concat(ctx, y, y_chunk, 2);
+                    if (chunk_size_i == n_seq_tokens) {
+                        y = y_chunk;
+                    } else {
+                        y = ggml_concat(ctx, y, y_chunk, 2);
+                    }
                     cb(y, "y", il);
                     ssm = next_state;
                 }
