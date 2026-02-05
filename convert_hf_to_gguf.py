@@ -12142,6 +12142,84 @@ class LFM25AudioTokenizer(LFM2Model):
         yield from super().modify_tensors(data_torch, name, bid)
 
 
+@ModelBase.register("GraniteSpeechForConditionalGeneration")
+class GraniteSpeechModel(ConformerAudioModel):
+    has_vision_encoder = False
+    has_audio_encoder = True
+    model_name = "GraniteSpeechEncoder"
+    _batch_norm_tensor_names: dict[str, str] = {
+        "weight": "encoder.layers.{bid}.conv.batch_norm.weight",
+        "bias": "encoder.layers.{bid}.conv.batch_norm.bias",
+        "running_mean": "encoder.layers.{bid}.conv.batch_norm.running_mean",
+        "running_var": "encoder.layers.{bid}.conv.batch_norm.running_var"
+    }
+    _depth_conv_name: str = "conv.depth_conv.conv"
+
+    def get_audio_config(self) -> dict[str, Any] | None:
+        return self.global_config.get("encoder_config")
+
+    def get_projector_config(self) -> dict[str, Any] | None:
+        return self.global_config.get("projector_config")
+
+    def set_gguf_parameters(self):
+        encoder_config = self.get_audio_config()
+        projector_config = self.get_projector_config()
+        assert encoder_config is not None
+        assert projector_config is not None
+
+        # Set up hparams_audio for the parent class
+        assert self.hparams_audio is not None
+        self.hparams_audio["hidden_size"] = encoder_config["hidden_dim"]
+        self.hparams_audio["intermediate_size"] = encoder_config["hidden_dim"] * encoder_config.get("feedforward_mult", 4)
+        self.hparams_audio["num_attention_heads"] = encoder_config["num_heads"]
+        self.hparams_audio["num_hidden_layers"] = encoder_config["num_layers"]
+
+        super().set_gguf_parameters()
+
+        # Projector type
+        self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.GRANITE_SPEECH)
+
+        # Encoder-specific parameters
+        self.gguf_writer.add_audio_attention_layernorm_eps(1e-5)  # default LayerNorm eps
+        self.gguf_writer.add_audio_context_size(encoder_config.get("context_size", 200))
+        self.gguf_writer.add_audio_input_dim(encoder_config.get("input_dim", 160))
+
+        # Q-Former projector parameters
+        # NOTE: Number of queries per window = window_size / downsample_rate
+        window_size = self.global_config.get("window_size", 15)
+        downsample_rate = self.global_config.get("downsample_rate", 5)
+        num_queries = window_size // downsample_rate
+        self.gguf_writer.add_audio_window_size(window_size)
+        self.gguf_writer.add_audio_downsample_rate(downsample_rate)
+        self.gguf_writer.add_audio_num_queries(num_queries)
+        self.gguf_writer.add_audio_projector_block_count(projector_config.get("num_hidden_layers", 2))
+        self.gguf_writer.add_audio_projector_layernorm_eps(projector_config.get("layer_norm_eps", 1e-12))
+
+    @staticmethod
+    def is_audio_tensor(name: str):
+        return any(p in name for p in ["encoder.", "projector."])
+
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        # Skip language model tensors
+        if name.startswith("language_model."):
+            return
+
+        # Handle combined K+V projection - split into separate K and V tensors
+        if "encoder.layers." in name and ".attn.to_kv." in name:
+            # to_kv.weight shape is [2*hidden_dim, hidden_dim] - first half is K, second half is V
+            hidden_dim = data_torch.shape[0] // 2
+            k_tensor = data_torch[:hidden_dim]
+            v_tensor = data_torch[hidden_dim:]
+            k_name = name.replace(".attn.to_kv.", ".attn.to_k.")
+            v_name = name.replace(".attn.to_kv.", ".attn.to_v.")
+            yield from super(ConformerAudioModel, self).modify_tensors(k_tensor, k_name, bid)
+            yield from super(ConformerAudioModel, self).modify_tensors(v_tensor, v_name, bid)
+            return
+
+        # Pass to parent for tensor mapping
+        yield from super(ConformerAudioModel, self).modify_tensors(data_torch, name, bid)
+
+
 @ModelBase.register("SmallThinkerForCausalLM")
 class SmallThinkerModel(TextModel):
     model_arch = gguf.MODEL_ARCH.SMALLTHINKER
