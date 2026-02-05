@@ -345,6 +345,15 @@ class Keys:
 
         class Projector:
             STACK_FACTOR    = "clip.audio.projector.stack_factor"
+            WINDOW_SIZE     = "clip.audio.projector.window_size"         # granite_speech
+            DOWNSAMPLE_RATE = "clip.audio.projector.downsample_rate"     # granite_speech
+            NUM_QUERIES     = "clip.audio.projector.num_queries"         # granite_speech
+            BLOCK_COUNT     = "clip.audio.projector.block_count"         # granite_speech
+            LAYERNORM_EPS   = "clip.audio.projector.layer_norm_epsilon"  # granite_speech
+
+        class Encoder:
+            CONTEXT_SIZE    = "clip.audio.encoder.context_size"  # granite_speech (for Shaw's relative pos)
+            INPUT_DIM       = "clip.audio.encoder.input_dim"     # granite_speech
 
     class Diffusion:
         SHIFT_LOGITS        = "diffusion.shift_logits"
@@ -497,17 +506,18 @@ class MODEL_ARCH(IntEnum):
 
 
 class VISION_PROJECTOR_TYPE(IntEnum):
-    MLP       = auto()
-    LDP       = auto()
-    LDPV2     = auto()
-    RESAMPLER = auto()
-    GLM_EDGE  = auto()
-    MERGER    = auto()
-    GEMMA3N   = auto()
-    GEMMA3    = auto()
-    QWEN3VL   = auto()
-    STEP3VL   = auto()
-    COGVLM    = auto()
+    MLP            = auto()
+    LDP            = auto()
+    LDPV2          = auto()
+    RESAMPLER      = auto()
+    GLM_EDGE       = auto()
+    MERGER         = auto()
+    GEMMA3N        = auto()
+    GEMMA3         = auto()
+    QWEN3VL        = auto()
+    STEP3VL        = auto()
+    COGVLM         = auto()
+    GRANITE_SPEECH = auto()
 
 
 class MODEL_TENSOR(IntEnum):
@@ -850,6 +860,30 @@ class MODEL_TENSOR(IntEnum):
     A_ENC_CONV_NORM        = auto() # SSM conv
     A_ENC_CONV_PW1         = auto()
     A_ENC_CONV_PW2         = auto()
+    # granite_speech audio encoder
+    A_ENC_INPUT_PROJ       = auto()  # granite_speech: input linear projection
+    A_ENC_REL_POS_EMB      = auto()  # granite_speech: Shaw's relative position embedding
+    A_ENC_ATTN_KV          = auto()  # granite_speech: combined K+V projection
+    A_ENC_OUT_MID          = auto()  # granite_speech: intermediate output (skip connection)
+    A_ENC_CONV_UP          = auto()  # granite_speech: conv up projection (different from pw1)
+    A_ENC_CONV_DOWN        = auto()  # granite_speech: conv down projection (different from pw2)
+    # granite_speech Q-Former projector
+    A_PROJ_QUERY           = auto()  # granite_speech: learnable query embeddings
+    A_PROJ_LN              = auto()  # granite_speech: Q-Former input layer norm
+    A_PROJ_SELF_ATTN_Q     = auto()  # granite_speech: Q-Former self-attention query
+    A_PROJ_SELF_ATTN_K     = auto()  # granite_speech: Q-Former self-attention key
+    A_PROJ_SELF_ATTN_V     = auto()  # granite_speech: Q-Former self-attention value
+    A_PROJ_SELF_ATTN_OUT   = auto()  # granite_speech: Q-Former self-attention output dense
+    A_PROJ_SELF_ATTN_LN    = auto()  # granite_speech: Q-Former self-attention output layer norm
+    A_PROJ_CROSS_ATTN_Q    = auto()  # granite_speech: Q-Former cross-attention query
+    A_PROJ_CROSS_ATTN_K    = auto()  # granite_speech: Q-Former cross-attention key
+    A_PROJ_CROSS_ATTN_V    = auto()  # granite_speech: Q-Former cross-attention value
+    A_PROJ_CROSS_ATTN_OUT  = auto()  # granite_speech: Q-Former cross-attention output dense
+    A_PROJ_CROSS_ATTN_LN   = auto()  # granite_speech: Q-Former cross-attention output layer norm
+    A_PROJ_FFN_UP          = auto()  # granite_speech: Q-Former FFN up (intermediate_query.dense)
+    A_PROJ_FFN_DOWN        = auto()  # granite_speech: Q-Former FFN down (output_query.dense)
+    A_PROJ_FFN_LN          = auto()  # granite_speech: Q-Former FFN output layer norm
+    A_PROJ_OUT             = auto()  # granite_speech: final projection to LLM hidden size
 
 
 MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
@@ -981,15 +1015,16 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
 }
 
 VISION_PROJECTOR_TYPE_NAMES: dict[VISION_PROJECTOR_TYPE, str] = {
-    VISION_PROJECTOR_TYPE.MLP:       "mlp",
-    VISION_PROJECTOR_TYPE.LDP:       "ldp",
-    VISION_PROJECTOR_TYPE.LDPV2:     "ldpv2",
-    VISION_PROJECTOR_TYPE.RESAMPLER: "resampler",
-    VISION_PROJECTOR_TYPE.GLM_EDGE:  "adapter",
-    VISION_PROJECTOR_TYPE.MERGER:    "qwen2vl_merger",
-    VISION_PROJECTOR_TYPE.GEMMA3:    "gemma3",
-    VISION_PROJECTOR_TYPE.QWEN3VL:   "qwen3vl_merger",
-    VISION_PROJECTOR_TYPE.STEP3VL:   "step3vl",
+    VISION_PROJECTOR_TYPE.MLP:            "mlp",
+    VISION_PROJECTOR_TYPE.LDP:            "ldp",
+    VISION_PROJECTOR_TYPE.LDPV2:          "ldpv2",
+    VISION_PROJECTOR_TYPE.RESAMPLER:      "resampler",
+    VISION_PROJECTOR_TYPE.GLM_EDGE:       "adapter",
+    VISION_PROJECTOR_TYPE.MERGER:         "qwen2vl_merger",
+    VISION_PROJECTOR_TYPE.GEMMA3:         "gemma3",
+    VISION_PROJECTOR_TYPE.QWEN3VL:        "qwen3vl_merger",
+    VISION_PROJECTOR_TYPE.STEP3VL:        "step3vl",
+    VISION_PROJECTOR_TYPE.GRANITE_SPEECH: "granite_speech",
 }
 
 TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
@@ -1326,6 +1361,30 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.A_ENC_CONV_NORM:           "a.blk.{bid}.conv_norm",
     MODEL_TENSOR.A_ENC_CONV_PW1:            "a.blk.{bid}.conv_pw1",
     MODEL_TENSOR.A_ENC_CONV_PW2:            "a.blk.{bid}.conv_pw2",
+    # granite_speech audio encoder
+    MODEL_TENSOR.A_ENC_INPUT_PROJ:          "a.input_proj",
+    MODEL_TENSOR.A_ENC_REL_POS_EMB:         "a.blk.{bid}.rel_pos_emb",
+    MODEL_TENSOR.A_ENC_ATTN_KV:             "a.blk.{bid}.attn_kv",
+    MODEL_TENSOR.A_ENC_OUT_MID:             "a.out_mid",
+    MODEL_TENSOR.A_ENC_CONV_UP:             "a.blk.{bid}.conv_up",
+    MODEL_TENSOR.A_ENC_CONV_DOWN:           "a.blk.{bid}.conv_down",
+    # granite_speech Q-Former projector
+    MODEL_TENSOR.A_PROJ_QUERY:              "mm.a.qf.query",
+    MODEL_TENSOR.A_PROJ_LN:                 "mm.a.qf.ln",
+    MODEL_TENSOR.A_PROJ_SELF_ATTN_Q:        "mm.a.qf.blk.{bid}.self_attn_q",
+    MODEL_TENSOR.A_PROJ_SELF_ATTN_K:        "mm.a.qf.blk.{bid}.self_attn_k",
+    MODEL_TENSOR.A_PROJ_SELF_ATTN_V:        "mm.a.qf.blk.{bid}.self_attn_v",
+    MODEL_TENSOR.A_PROJ_SELF_ATTN_OUT:      "mm.a.qf.blk.{bid}.self_attn_out",
+    MODEL_TENSOR.A_PROJ_SELF_ATTN_LN:       "mm.a.qf.blk.{bid}.self_attn_ln",
+    MODEL_TENSOR.A_PROJ_CROSS_ATTN_Q:       "mm.a.qf.blk.{bid}.cross_attn_q",
+    MODEL_TENSOR.A_PROJ_CROSS_ATTN_K:       "mm.a.qf.blk.{bid}.cross_attn_k",
+    MODEL_TENSOR.A_PROJ_CROSS_ATTN_V:       "mm.a.qf.blk.{bid}.cross_attn_v",
+    MODEL_TENSOR.A_PROJ_CROSS_ATTN_OUT:     "mm.a.qf.blk.{bid}.cross_attn_out",
+    MODEL_TENSOR.A_PROJ_CROSS_ATTN_LN:      "mm.a.qf.blk.{bid}.cross_attn_ln",
+    MODEL_TENSOR.A_PROJ_FFN_UP:             "mm.a.qf.blk.{bid}.ffn_up",
+    MODEL_TENSOR.A_PROJ_FFN_DOWN:           "mm.a.qf.blk.{bid}.ffn_down",
+    MODEL_TENSOR.A_PROJ_FFN_LN:             "mm.a.qf.blk.{bid}.ffn_ln",
+    MODEL_TENSOR.A_PROJ_OUT:                "mm.a.qf.out",
     # NextN/MTP
     MODEL_TENSOR.NEXTN_EH_PROJ:             "blk.{bid}.nextn.eh_proj",
     MODEL_TENSOR.NEXTN_EMBED_TOKENS:        "blk.{bid}.nextn.embed_tokens",
@@ -1471,6 +1530,31 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.A_MM_HARD_EMB_NORM,
         MODEL_TENSOR.A_PER_DIM_K_SCALE,
         MODEL_TENSOR.A_PER_DIM_SCALE,
+
+        # granite_speech audio encoder
+        MODEL_TENSOR.A_ENC_INPUT_PROJ,
+        MODEL_TENSOR.A_ENC_REL_POS_EMB,
+        MODEL_TENSOR.A_ENC_ATTN_KV,
+        MODEL_TENSOR.A_ENC_OUT_MID,
+        MODEL_TENSOR.A_ENC_CONV_UP,
+        MODEL_TENSOR.A_ENC_CONV_DOWN,
+        # granite_speech Q-Former projector
+        MODEL_TENSOR.A_PROJ_QUERY,
+        MODEL_TENSOR.A_PROJ_LN,
+        MODEL_TENSOR.A_PROJ_SELF_ATTN_Q,
+        MODEL_TENSOR.A_PROJ_SELF_ATTN_K,
+        MODEL_TENSOR.A_PROJ_SELF_ATTN_V,
+        MODEL_TENSOR.A_PROJ_SELF_ATTN_OUT,
+        MODEL_TENSOR.A_PROJ_SELF_ATTN_LN,
+        MODEL_TENSOR.A_PROJ_CROSS_ATTN_Q,
+        MODEL_TENSOR.A_PROJ_CROSS_ATTN_K,
+        MODEL_TENSOR.A_PROJ_CROSS_ATTN_V,
+        MODEL_TENSOR.A_PROJ_CROSS_ATTN_OUT,
+        MODEL_TENSOR.A_PROJ_CROSS_ATTN_LN,
+        MODEL_TENSOR.A_PROJ_FFN_UP,
+        MODEL_TENSOR.A_PROJ_FFN_DOWN,
+        MODEL_TENSOR.A_PROJ_FFN_LN,
+        MODEL_TENSOR.A_PROJ_OUT,
     ],
     MODEL_ARCH.LLAMA: [
         MODEL_TENSOR.TOKEN_EMBD,
@@ -4129,6 +4213,7 @@ class VisionProjectorType:
     YOUTUVL = "youtuvl"
     NEMOTRON_V2_VL = "nemotron_v2_vl"
     HUNYUANOCR     = "hunyuanocr"
+    GRANITE_SPEECH = "granite_speech"
 
 
 # Items here are (block size, type size)
