@@ -7141,6 +7141,15 @@ class Gemma3VisionModel(MmprojModel):
 class ConformerAudioModel(MmprojModel):
     _batch_norm_tensors: list[dict[str, Tensor]] | None = None
 
+    # Name mappings so children can map to different names without copying code
+    _batch_norm_tensor_names: dict[str, str] = {
+        "weight": "conformer.layers.{bid}.conv.batch_norm.weight",
+        "bias": "conformer.layers.{bid}.conv.batch_norm.bias",
+        "running_mean": "conformer.layers.{bid}.conv.batch_norm.running_mean",
+        "running_var": "conformer.layers.{bid}.conv.batch_norm.running_var"
+    }
+    _depth_conv_name: str = "conv.depthwise_conv"
+
     @staticmethod
     def is_audio_tensor(name: str):
         return any(p in name for p in ["audio", "codebook", "conformer", "depth_embedding", "depthformer", "depth_linear"])
@@ -7151,6 +7160,9 @@ class ConformerAudioModel(MmprojModel):
                 return gguf.GGMLQuantizationType.F32
         return super().tensor_force_quant(name, new_name, bid, n_dims)
 
+    def bn_tensor_name(self, key: str, bid: int | None) -> str:
+        return self._batch_norm_tensor_names[key].format(bid)
+
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
         # fold running_mean, running_var and eps into weight and bias for batch_norm
         if "batch_norm" in name:
@@ -7159,13 +7171,23 @@ class ConformerAudioModel(MmprojModel):
             assert bid is not None
             self._batch_norm_tensors[bid][name] = data_torch
 
-            if len(self._batch_norm_tensors[bid]) < 5:
+            # Wait for all required keys to be present for the batch norm
+            if any(key not in self._batch_norm_tensors[bid] for key in self._batch_norm_tensor_names):
                 return
 
-            weight = self._batch_norm_tensors[bid][f"conformer.layers.{bid}.conv.batch_norm.weight"]
-            bias = self._batch_norm_tensors[bid][f"conformer.layers.{bid}.conv.batch_norm.bias"]
-            running_mean = self._batch_norm_tensors[bid][f"conformer.layers.{bid}.conv.batch_norm.running_mean"]
-            running_var = self._batch_norm_tensors[bid][f"conformer.layers.{bid}.conv.batch_norm.running_var"]
+            weight_name = self.bn_tensor_name("weight", bid)
+            bias_name = self.bn_tensor_name("bias", bid)
+            running_mean_name = self.bn_tensor_name("running_mean", bid)
+            running_var_name = self.bn_tensor_name("running_var", bid)
+
+            # If not a tensor needed below, skip
+            if name not in [weight_name, bias_name, running_mean_name, running_var_name]:
+                return
+
+            weight = self._batch_norm_tensors[bid][weight_name]
+            bias = self._batch_norm_tensors[bid][bias_name]
+            running_mean = self._batch_norm_tensors[bid][running_mean_name]
+            running_var = self._batch_norm_tensors[bid][running_var_name]
             eps = 1e-5 # default value
 
             a = weight / torch.sqrt(running_var + eps)
@@ -7177,7 +7199,7 @@ class ConformerAudioModel(MmprojModel):
         # reshape conv weights
         if name.startswith("conformer.pre_encode.conv.") and name.endswith(".bias"):
             data_torch = data_torch[:, None, None]
-        if "conv.depthwise_conv" in name and name.endswith(".weight"):
+        if self._depth_conv_name in name and name.endswith(".weight"):
             assert data_torch.shape[1] == 1
             data_torch = data_torch.reshape(data_torch.shape[0], data_torch.shape[2])
         if "conv.pointwise_conv" in name and name.endswith(".weight"):
