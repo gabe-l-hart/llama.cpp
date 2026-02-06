@@ -64,6 +64,13 @@
 #define KEY_A_NUM_MEL_BINS      "clip.audio.num_mel_bins"
 #define KEY_A_PROJ_STACK_FACTOR "clip.audio.projector.stack_factor"
 
+// granite-speech audio projector hparams
+#define KEY_A_PROJ_BLOCK_COUNT     "clip.audio.projector.block_count"
+#define KEY_A_PROJ_WINDOW_SIZE     "clip.audio.projector.window_size"
+#define KEY_A_PROJ_DOWNSAMPLE_RATE "clip.audio.projector.downsample_rate"
+#define KEY_A_PROJ_NUM_QUERIES     "clip.audio.projector.num_queries"
+#define KEY_A_PROJ_LAYERNORM_EPS   "clip.audio.projector.layer_norm_epsilon"
+
 
 //
 // tensor name constants
@@ -225,6 +232,32 @@
 #define TN_STD_BIAS              "v.std_bias"
 #define TN_STD_SCALE             "v.std_scale"
 
+// granite_speech audio encoder
+#define TN_INPUT_PROJ      "a.input_proj.%s"
+#define TN_OUT_MID         "a.out_mid.%s"
+#define TN_REL_POS_EMB     "%s.blk.%d.rel_pos_emb.%s"
+#define TN_CONV_UP         "%s.blk.%d.conv_up.%s"
+#define TN_CONV_DOWN       "%s.blk.%d.conv_down.%s"
+
+// granite_speech Q-Former projector (non-blocked)
+#define TN_QF_QUERY        "mm.a.qf.query"
+#define TN_QF_LN           "mm.a.qf.ln.%s"
+#define TN_QF_OUT          "mm.a.qf.out.%s"
+
+// granite_speech Q-Former projector (blocked)
+#define TN_QF_SELF_ATTN_Q   "mm.a.qf.blk.%d.self_attn_q.%s"
+#define TN_QF_SELF_ATTN_K   "mm.a.qf.blk.%d.self_attn_k.%s"
+#define TN_QF_SELF_ATTN_V   "mm.a.qf.blk.%d.self_attn_v.%s"
+#define TN_QF_SELF_ATTN_OUT "mm.a.qf.blk.%d.self_attn_out.%s"
+#define TN_QF_SELF_ATTN_LN  "mm.a.qf.blk.%d.self_attn_ln.%s"
+#define TN_QF_CROSS_ATTN_Q  "mm.a.qf.blk.%d.cross_attn_q.%s"
+#define TN_QF_CROSS_ATTN_K  "mm.a.qf.blk.%d.cross_attn_k.%s"
+#define TN_QF_CROSS_ATTN_V  "mm.a.qf.blk.%d.cross_attn_v.%s"
+#define TN_QF_CROSS_ATTN_OUT "mm.a.qf.blk.%d.cross_attn_out.%s"
+#define TN_QF_CROSS_ATTN_LN "mm.a.qf.blk.%d.cross_attn_ln.%s"
+#define TN_QF_FFN_UP        "mm.a.qf.blk.%d.ffn_up.%s"
+#define TN_QF_FFN_DOWN      "mm.a.qf.blk.%d.ffn_down.%s"
+#define TN_QF_FFN_LN        "mm.a.qf.blk.%d.ffn_ln.%s"
 
 // align x to upper multiple of n
 #define CLIP_ALIGN(x, n) ((((x) + (n) - 1) / (n)) * (n))
@@ -273,6 +306,7 @@ enum projector_type {
     PROJECTOR_TYPE_KIMIK25,
     PROJECTOR_TYPE_NEMOTRON_V2_VL,
     PROJECTOR_TYPE_HUNYUANOCR,
+    PROJECTOR_TYPE_GRANITE_SPEECH,
     PROJECTOR_TYPE_UNKNOWN,
 };
 
@@ -315,6 +349,7 @@ static std::map<projector_type, std::string> PROJECTOR_TYPE_NAMES = {
     { PROJECTOR_TYPE_KIMIK25,   "kimik25"},
     { PROJECTOR_TYPE_NEMOTRON_V2_VL, "nemotron_v2_vl"},
     { PROJECTOR_TYPE_HUNYUANOCR, "hunyuanocr"},
+    { PROJECTOR_TYPE_GRANITE_SPEECH, "granite_speech"},
 };
 
 static projector_type clip_projector_type_from_string(const std::string & str) {
