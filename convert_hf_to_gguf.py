@@ -12217,8 +12217,8 @@ class GraniteSpeechModel(ConformerAudioModel):
             yield from super(ConformerAudioModel, self).modify_tensors(v_tensor, v_name, bid)
             return
 
-        # Pass to parent for tensor mapping
-        yield from super(ConformerAudioModel, self).modify_tensors(data_torch, name, bid)
+        # Pass to parent for batch norm handling and tensor mapping
+        yield from super().modify_tensors(data_torch, name, bid)
 
 
 @ModelBase.register("SmallThinkerForCausalLM")
