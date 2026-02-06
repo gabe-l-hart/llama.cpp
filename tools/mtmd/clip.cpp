@@ -1449,6 +1449,23 @@ struct clip_model_loader {
                         hparams.image_pad_color   = {127, 127, 127};
                         hparams.image_resize_algo = RESIZE_ALGO_BILINEAR;
                     } break;
+                case PROJECTOR_TYPE_GRANITE_SPEECH:
+                    {
+                        // Q-Former projector hparams
+                        get_u32(KEY_A_PROJ_BLOCK_COUNT, hparams.proj_n_layer);
+                        get_u32(KEY_A_PROJ_WINDOW_SIZE, hparams.proj_window_size, false);
+                        get_u32(KEY_A_PROJ_DOWNSAMPLE_RATE, hparams.proj_downsample_rate, false);
+                        get_u32(KEY_A_PROJ_NUM_QUERIES, hparams.proj_n_queries, false);
+                        get_f32(KEY_A_PROJ_LAYERNORM_EPS, hparams.proj_layernorm_eps, false);
+
+                        // audio preprocessing params
+                        hparams.audio_chunk_len        = -1; // no chunking for granite-speech
+                        hparams.audio_sample_rate      = 16000;
+                        hparams.audio_n_fft            = 512;
+                        hparams.audio_window_len       = 400;
+                        hparams.audio_hop_len          = 160;
+                        hparams.n_mel_bins             = 80;
+                    } break;
                 default:
                     throw std::runtime_error(string_format("%s: unknown vision projector type %s\n", __func__, proj_type.c_str()));
             }
@@ -1507,6 +1524,12 @@ struct clip_model_loader {
                 LOG_INF("%s: audio_n_fft:        %d\n", __func__, hparams.audio_n_fft);
                 LOG_INF("%s: audio_window_len:   %d\n", __func__, hparams.audio_window_len);
                 LOG_INF("%s: audio_hop_len:      %d\n", __func__, hparams.audio_hop_len);
+                if (hparams.proj_n_layer > 0) {
+                    LOG_INF("%s: proj_n_layer:       %d\n", __func__, hparams.proj_n_layer);
+                    LOG_INF("%s: proj_window_size:   %d\n", __func__, hparams.proj_window_size);
+                    LOG_INF("%s: proj_downsample:    %d\n", __func__, hparams.proj_downsample_rate);
+                    LOG_INF("%s: proj_n_queries:     %d\n", __func__, hparams.proj_n_queries);
+                }
             }
             LOG_INF("\n");
             LOG_INF("%s: model size:         %.2f MiB\n", __func__, model_size / 1024.0 / 1024.0);
@@ -2180,6 +2203,113 @@ struct clip_model_loader {
                         layer.conv_pw1_b   = get_tensor(string_format(TN_CONV_PW1,  prefix, il, "bias"));
                         layer.conv_pw2_w   = get_tensor(string_format(TN_CONV_PW2,  prefix, il, "weight"));
                         layer.conv_pw2_b   = get_tensor(string_format(TN_CONV_PW2,  prefix, il, "bias"));
+                    }
+                } break;
+            case PROJECTOR_TYPE_GRANITE_SPEECH:
+                {
+                    // Non-blocked encoder tensors
+                    model.input_proj_w = get_tensor(string_format(TN_INPUT_PROJ, "weight"));
+                    model.input_proj_b = get_tensor(string_format(TN_INPUT_PROJ, "bias"));
+                    model.out_mid_w    = get_tensor(string_format(TN_OUT_MID, "weight"), false);
+                    model.out_mid_b    = get_tensor(string_format(TN_OUT_MID, "bias"), false);
+
+                    // Encoder output projection
+                    model.mm_0_w = get_tensor(string_format(TN_PRE_ENCODE_OUT, "weight"));
+                    model.mm_0_b = get_tensor(string_format(TN_PRE_ENCODE_OUT, "bias"), false);
+
+                    // Encoder per-layer tensors
+                    for (int il = 0; il < hparams.n_layer; ++il) {
+                        auto & layer = model.layers[il];
+
+                        // Attention
+                        layer.ln_1_w = get_tensor(string_format(TN_LN_1, prefix, il, "weight"));
+                        layer.ln_1_b = get_tensor(string_format(TN_LN_1, prefix, il, "bias"), false);
+                        layer.q_w    = get_tensor(string_format(TN_ATTN_Q, prefix, il, "weight"));
+                        layer.q_b    = get_tensor(string_format(TN_ATTN_Q, prefix, il, "bias"), false);
+                        layer.k_w    = get_tensor(string_format(TN_ATTN_K, prefix, il, "weight"));
+                        layer.k_b    = get_tensor(string_format(TN_ATTN_K, prefix, il, "bias"), false);
+                        layer.v_w    = get_tensor(string_format(TN_ATTN_V, prefix, il, "weight"));
+                        layer.v_b    = get_tensor(string_format(TN_ATTN_V, prefix, il, "bias"), false);
+                        layer.o_w    = get_tensor(string_format(TN_ATTN_OUTPUT, prefix, il, "weight"));
+                        layer.o_b    = get_tensor(string_format(TN_ATTN_OUTPUT, prefix, il, "bias"), false);
+                        layer.ln_2_w = get_tensor(string_format(TN_LN_2, prefix, il, "weight"), false);
+                        layer.ln_2_b = get_tensor(string_format(TN_LN_2, prefix, il, "bias"), false);
+
+                        // Shaw's relative position embedding
+                        layer.rel_pos_emb_w = get_tensor(string_format(TN_REL_POS_EMB, prefix, il, "weight"));
+
+                        // Convolution module
+                        layer.norm_conv_w  = get_tensor(string_format(TN_NORM_CONV, prefix, il, "weight"));
+                        layer.norm_conv_b  = get_tensor(string_format(TN_NORM_CONV, prefix, il, "bias"), false);
+                        layer.conv_dw_w    = get_tensor(string_format(TN_CONV_DW, prefix, il, "weight"));
+                        layer.conv_dw_b    = get_tensor(string_format(TN_CONV_DW, prefix, il, "bias"), false);
+                        layer.conv_up_w    = get_tensor(string_format(TN_CONV_UP, prefix, il, "weight"));
+                        layer.conv_up_b    = get_tensor(string_format(TN_CONV_UP, prefix, il, "bias"), false);
+                        layer.conv_down_w  = get_tensor(string_format(TN_CONV_DOWN, prefix, il, "weight"));
+                        layer.conv_down_b  = get_tensor(string_format(TN_CONV_DOWN, prefix, il, "bias"), false);
+                        layer.conv_norm_w  = get_tensor(string_format(TN_CONV_NORM, prefix, il, "weight"));
+                        layer.conv_norm_b  = get_tensor(string_format(TN_CONV_NORM, prefix, il, "bias"), false);
+
+                        // Feed-forward 1
+                        layer.ff_norm_w   = get_tensor(string_format(TN_FFN_NORM, prefix, il, "weight"));
+                        layer.ff_norm_b   = get_tensor(string_format(TN_FFN_NORM, prefix, il, "bias"), false);
+                        layer.ff_up_w     = get_tensor(string_format(TN_FFN_UP, prefix, il, "weight"));
+                        layer.ff_up_b     = get_tensor(string_format(TN_FFN_UP, prefix, il, "bias"), false);
+                        layer.ff_down_w   = get_tensor(string_format(TN_FFN_DOWN, prefix, il, "weight"));
+                        layer.ff_down_b   = get_tensor(string_format(TN_FFN_DOWN, prefix, il, "bias"), false);
+
+                        // Feed-forward 2
+                        layer.ff_norm_1_w = get_tensor(string_format(TN_FFN_NORM_1, prefix, il, "weight"));
+                        layer.ff_norm_1_b = get_tensor(string_format(TN_FFN_NORM_1, prefix, il, "bias"), false);
+                        layer.ff_up_1_w   = get_tensor(string_format(TN_FFN_UP_1, prefix, il, "weight"));
+                        layer.ff_up_1_b   = get_tensor(string_format(TN_FFN_UP_1, prefix, il, "bias"), false);
+                        layer.ff_down_1_w = get_tensor(string_format(TN_FFN_DOWN_1, prefix, il, "weight"));
+                        layer.ff_down_1_b = get_tensor(string_format(TN_FFN_DOWN_1, prefix, il, "bias"), false);
+                    }
+
+                    // Q-Former non-blocked tensors
+                    model.qf_query = get_tensor(TN_QF_QUERY);
+                    model.qf_ln_w  = get_tensor(string_format(TN_QF_LN, "weight"));
+                    model.qf_ln_b  = get_tensor(string_format(TN_QF_LN, "bias"), false);
+                    model.qf_out_w = get_tensor(string_format(TN_QF_OUT, "weight"));
+                    model.qf_out_b = get_tensor(string_format(TN_QF_OUT, "bias"), false);
+
+                    // Q-Former per-layer tensors
+                    model.qformer_layers.resize(hparams.proj_n_layer);
+                    for (int il = 0; il < hparams.proj_n_layer; ++il) {
+                        auto & layer = model.qformer_layers[il];
+
+                        // Self-attention
+                        layer.self_attn_q_w  = get_tensor(string_format(TN_QF_SELF_ATTN_Q, il, "weight"));
+                        layer.self_attn_q_b  = get_tensor(string_format(TN_QF_SELF_ATTN_Q, il, "bias"), false);
+                        layer.self_attn_k_w  = get_tensor(string_format(TN_QF_SELF_ATTN_K, il, "weight"));
+                        layer.self_attn_k_b  = get_tensor(string_format(TN_QF_SELF_ATTN_K, il, "bias"), false);
+                        layer.self_attn_v_w  = get_tensor(string_format(TN_QF_SELF_ATTN_V, il, "weight"));
+                        layer.self_attn_v_b  = get_tensor(string_format(TN_QF_SELF_ATTN_V, il, "bias"), false);
+                        layer.self_attn_o_w  = get_tensor(string_format(TN_QF_SELF_ATTN_OUT, il, "weight"));
+                        layer.self_attn_o_b  = get_tensor(string_format(TN_QF_SELF_ATTN_OUT, il, "bias"), false);
+                        layer.self_attn_ln_w = get_tensor(string_format(TN_QF_SELF_ATTN_LN, il, "weight"));
+                        layer.self_attn_ln_b = get_tensor(string_format(TN_QF_SELF_ATTN_LN, il, "bias"), false);
+
+                        // Cross-attention
+                        layer.cross_attn_q_w  = get_tensor(string_format(TN_QF_CROSS_ATTN_Q, il, "weight"));
+                        layer.cross_attn_q_b  = get_tensor(string_format(TN_QF_CROSS_ATTN_Q, il, "bias"), false);
+                        layer.cross_attn_k_w  = get_tensor(string_format(TN_QF_CROSS_ATTN_K, il, "weight"));
+                        layer.cross_attn_k_b  = get_tensor(string_format(TN_QF_CROSS_ATTN_K, il, "bias"), false);
+                        layer.cross_attn_v_w  = get_tensor(string_format(TN_QF_CROSS_ATTN_V, il, "weight"));
+                        layer.cross_attn_v_b  = get_tensor(string_format(TN_QF_CROSS_ATTN_V, il, "bias"), false);
+                        layer.cross_attn_o_w  = get_tensor(string_format(TN_QF_CROSS_ATTN_OUT, il, "weight"));
+                        layer.cross_attn_o_b  = get_tensor(string_format(TN_QF_CROSS_ATTN_OUT, il, "bias"), false);
+                        layer.cross_attn_ln_w = get_tensor(string_format(TN_QF_CROSS_ATTN_LN, il, "weight"));
+                        layer.cross_attn_ln_b = get_tensor(string_format(TN_QF_CROSS_ATTN_LN, il, "bias"), false);
+
+                        // FFN
+                        layer.ffn_up_w   = get_tensor(string_format(TN_QF_FFN_UP, il, "weight"));
+                        layer.ffn_up_b   = get_tensor(string_format(TN_QF_FFN_UP, il, "bias"), false);
+                        layer.ffn_down_w = get_tensor(string_format(TN_QF_FFN_DOWN, il, "weight"));
+                        layer.ffn_down_b = get_tensor(string_format(TN_QF_FFN_DOWN, il, "bias"), false);
+                        layer.ffn_ln_w   = get_tensor(string_format(TN_QF_FFN_LN, il, "weight"));
+                        layer.ffn_ln_b   = get_tensor(string_format(TN_QF_FFN_LN, il, "bias"), false);
                     }
                 } break;
             default:
