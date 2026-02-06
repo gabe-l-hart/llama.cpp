@@ -10455,6 +10455,12 @@ class GraniteModel(LlamaModel):
     """Conversion for IBM's GraniteForCausalLM"""
     model_arch = gguf.MODEL_ARCH.GRANITE
 
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        # Skip Granite Speech audio encoder and projector tensors
+        if name.startswith("encoder.") or name.startswith("projector."):
+            return
+        yield from super().modify_tensors(data_torch, name, bid)
+
     def set_gguf_parameters(self):
         """Granite uses standard llama parameters with the following differences:
 
