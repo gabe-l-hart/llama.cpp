@@ -345,15 +345,15 @@ class Keys:
 
         class Projector:
             STACK_FACTOR    = "clip.audio.projector.stack_factor"
-            WINDOW_SIZE     = "clip.audio.projector.window_size"         # granite_speech
-            DOWNSAMPLE_RATE = "clip.audio.projector.downsample_rate"     # granite_speech
-            NUM_QUERIES     = "clip.audio.projector.num_queries"         # granite_speech
-            BLOCK_COUNT     = "clip.audio.projector.block_count"         # granite_speech
-            LAYERNORM_EPS   = "clip.audio.projector.layer_norm_epsilon"  # granite_speech
+            WINDOW_SIZE     = "clip.audio.projector.window_size"         # granite-speech
+            DOWNSAMPLE_RATE = "clip.audio.projector.downsample_rate"     # granite-speech
+            NUM_QUERIES     = "clip.audio.projector.num_queries"         # granite-speech
+            BLOCK_COUNT     = "clip.audio.projector.block_count"         # granite-speech
+            LAYERNORM_EPS   = "clip.audio.projector.layer_norm_epsilon"  # granite-speech
 
         class Encoder:
-            CONTEXT_SIZE    = "clip.audio.encoder.context_size"  # granite_speech (for Shaw's relative pos)
-            INPUT_DIM       = "clip.audio.encoder.input_dim"     # granite_speech
+            CONTEXT_SIZE    = "clip.audio.encoder.context_size"  # granite-speech (for Shaw's relative pos)
+            INPUT_DIM       = "clip.audio.encoder.input_dim"     # granite-speech
 
     class Diffusion:
         SHIFT_LOGITS        = "diffusion.shift_logits"
@@ -860,30 +860,30 @@ class MODEL_TENSOR(IntEnum):
     A_ENC_CONV_NORM        = auto() # SSM conv
     A_ENC_CONV_PW1         = auto()
     A_ENC_CONV_PW2         = auto()
-    # granite_speech audio encoder
-    A_ENC_INPUT_PROJ       = auto()  # granite_speech: input linear projection
-    A_ENC_REL_POS_EMB      = auto()  # granite_speech: Shaw's relative position embedding
-    A_ENC_ATTN_KV          = auto()  # granite_speech: combined K+V projection
-    A_ENC_OUT_MID          = auto()  # granite_speech: intermediate output (skip connection)
-    A_ENC_CONV_UP          = auto()  # granite_speech: conv up projection (different from pw1)
-    A_ENC_CONV_DOWN        = auto()  # granite_speech: conv down projection (different from pw2)
-    # granite_speech Q-Former projector
-    A_PROJ_QUERY           = auto()  # granite_speech: learnable query embeddings
-    A_PROJ_LN              = auto()  # granite_speech: Q-Former input layer norm
-    A_PROJ_SELF_ATTN_Q     = auto()  # granite_speech: Q-Former self-attention query
-    A_PROJ_SELF_ATTN_K     = auto()  # granite_speech: Q-Former self-attention key
-    A_PROJ_SELF_ATTN_V     = auto()  # granite_speech: Q-Former self-attention value
-    A_PROJ_SELF_ATTN_OUT   = auto()  # granite_speech: Q-Former self-attention output dense
-    A_PROJ_SELF_ATTN_LN    = auto()  # granite_speech: Q-Former self-attention output layer norm
-    A_PROJ_CROSS_ATTN_Q    = auto()  # granite_speech: Q-Former cross-attention query
-    A_PROJ_CROSS_ATTN_K    = auto()  # granite_speech: Q-Former cross-attention key
-    A_PROJ_CROSS_ATTN_V    = auto()  # granite_speech: Q-Former cross-attention value
-    A_PROJ_CROSS_ATTN_OUT  = auto()  # granite_speech: Q-Former cross-attention output dense
-    A_PROJ_CROSS_ATTN_LN   = auto()  # granite_speech: Q-Former cross-attention output layer norm
-    A_PROJ_FFN_UP          = auto()  # granite_speech: Q-Former FFN up (intermediate_query.dense)
-    A_PROJ_FFN_DOWN        = auto()  # granite_speech: Q-Former FFN down (output_query.dense)
-    A_PROJ_FFN_LN          = auto()  # granite_speech: Q-Former FFN output layer norm
-    A_PROJ_OUT             = auto()  # granite_speech: final projection to LLM hidden size
+    # granite-speech audio encoder
+    A_ENC_INPUT_PROJ       = auto()  # granite-speech: input linear projection
+    A_ENC_REL_POS_EMB      = auto()  # granite-speech: Shaw's relative position embedding
+    A_ENC_ATTN_KV          = auto()  # granite-speech: combined K+V projection
+    A_ENC_OUT_MID          = auto()  # granite-speech: intermediate output (skip connection)
+    A_ENC_CONV_UP          = auto()  # granite-speech: conv up projection (different from pw1)
+    A_ENC_CONV_DOWN        = auto()  # granite-speech: conv down projection (different from pw2)
+    # granite-speech Q-Former projector
+    A_PROJ_QUERY           = auto()  # granite-speech: learnable query embeddings
+    A_PROJ_LN              = auto()  # granite-speech: Q-Former input layer norm
+    A_PROJ_SELF_ATTN_Q     = auto()  # granite-speech: Q-Former self-attention query
+    A_PROJ_SELF_ATTN_K     = auto()  # granite-speech: Q-Former self-attention key
+    A_PROJ_SELF_ATTN_V     = auto()  # granite-speech: Q-Former self-attention value
+    A_PROJ_SELF_ATTN_OUT   = auto()  # granite-speech: Q-Former self-attention output dense
+    A_PROJ_SELF_ATTN_LN    = auto()  # granite-speech: Q-Former self-attention output layer norm
+    A_PROJ_CROSS_ATTN_Q    = auto()  # granite-speech: Q-Former cross-attention query
+    A_PROJ_CROSS_ATTN_K    = auto()  # granite-speech: Q-Former cross-attention key
+    A_PROJ_CROSS_ATTN_V    = auto()  # granite-speech: Q-Former cross-attention value
+    A_PROJ_CROSS_ATTN_OUT  = auto()  # granite-speech: Q-Former cross-attention output dense
+    A_PROJ_CROSS_ATTN_LN   = auto()  # granite-speech: Q-Former cross-attention output layer norm
+    A_PROJ_FFN_UP          = auto()  # granite-speech: Q-Former FFN up (intermediate_query.dense)
+    A_PROJ_FFN_DOWN        = auto()  # granite-speech: Q-Former FFN down (output_query.dense)
+    A_PROJ_FFN_LN          = auto()  # granite-speech: Q-Former FFN output layer norm
+    A_PROJ_OUT             = auto()  # granite-speech: final projection to LLM hidden size
 
 
 MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
@@ -1361,14 +1361,14 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.A_ENC_CONV_NORM:           "a.blk.{bid}.conv_norm",
     MODEL_TENSOR.A_ENC_CONV_PW1:            "a.blk.{bid}.conv_pw1",
     MODEL_TENSOR.A_ENC_CONV_PW2:            "a.blk.{bid}.conv_pw2",
-    # granite_speech audio encoder
+    # granite-speech audio encoder
     MODEL_TENSOR.A_ENC_INPUT_PROJ:          "a.input_proj",
     MODEL_TENSOR.A_ENC_REL_POS_EMB:         "a.blk.{bid}.rel_pos_emb",
     MODEL_TENSOR.A_ENC_ATTN_KV:             "a.blk.{bid}.attn_kv",
     MODEL_TENSOR.A_ENC_OUT_MID:             "a.out_mid",
     MODEL_TENSOR.A_ENC_CONV_UP:             "a.blk.{bid}.conv_up",
     MODEL_TENSOR.A_ENC_CONV_DOWN:           "a.blk.{bid}.conv_down",
-    # granite_speech Q-Former projector
+    # granite-speech Q-Former projector
     MODEL_TENSOR.A_PROJ_QUERY:              "mm.a.qf.query",
     MODEL_TENSOR.A_PROJ_LN:                 "mm.a.qf.ln",
     MODEL_TENSOR.A_PROJ_SELF_ATTN_Q:        "mm.a.qf.blk.{bid}.self_attn_q",
@@ -1531,14 +1531,14 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.A_PER_DIM_K_SCALE,
         MODEL_TENSOR.A_PER_DIM_SCALE,
 
-        # granite_speech audio encoder
+        # granite-speech audio encoder
         MODEL_TENSOR.A_ENC_INPUT_PROJ,
         MODEL_TENSOR.A_ENC_REL_POS_EMB,
         MODEL_TENSOR.A_ENC_ATTN_KV,
         MODEL_TENSOR.A_ENC_OUT_MID,
         MODEL_TENSOR.A_ENC_CONV_UP,
         MODEL_TENSOR.A_ENC_CONV_DOWN,
-        # granite_speech Q-Former projector
+        # granite-speech Q-Former projector
         MODEL_TENSOR.A_PROJ_QUERY,
         MODEL_TENSOR.A_PROJ_LN,
         MODEL_TENSOR.A_PROJ_SELF_ATTN_Q,
