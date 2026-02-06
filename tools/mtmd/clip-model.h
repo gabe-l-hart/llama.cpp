@@ -275,6 +275,41 @@ struct mobilenetv5_block {
     ggml_tensor * attn_norm_w   = nullptr;
 };
 
+// Q-Former layer for granite-speech projector
+struct qformer_layer {
+    // self-attention
+    ggml_tensor * self_attn_q_w  = nullptr;
+    ggml_tensor * self_attn_q_b  = nullptr;
+    ggml_tensor * self_attn_k_w  = nullptr;
+    ggml_tensor * self_attn_k_b  = nullptr;
+    ggml_tensor * self_attn_v_w  = nullptr;
+    ggml_tensor * self_attn_v_b  = nullptr;
+    ggml_tensor * self_attn_o_w  = nullptr;
+    ggml_tensor * self_attn_o_b  = nullptr;
+    ggml_tensor * self_attn_ln_w = nullptr;
+    ggml_tensor * self_attn_ln_b = nullptr;
+
+    // cross-attention
+    ggml_tensor * cross_attn_q_w  = nullptr;
+    ggml_tensor * cross_attn_q_b  = nullptr;
+    ggml_tensor * cross_attn_k_w  = nullptr;
+    ggml_tensor * cross_attn_k_b  = nullptr;
+    ggml_tensor * cross_attn_v_w  = nullptr;
+    ggml_tensor * cross_attn_v_b  = nullptr;
+    ggml_tensor * cross_attn_o_w  = nullptr;
+    ggml_tensor * cross_attn_o_b  = nullptr;
+    ggml_tensor * cross_attn_ln_w = nullptr;
+    ggml_tensor * cross_attn_ln_b = nullptr;
+
+    // FFN
+    ggml_tensor * ffn_up_w   = nullptr;
+    ggml_tensor * ffn_up_b   = nullptr;
+    ggml_tensor * ffn_down_w = nullptr;
+    ggml_tensor * ffn_down_b = nullptr;
+    ggml_tensor * ffn_ln_w   = nullptr;
+    ggml_tensor * ffn_ln_b   = nullptr;
+};
+
 struct clip_model {
     clip_modality modality = CLIP_MODALITY_VISION;
     projector_type proj_type = PROJECTOR_TYPE_MLP;
@@ -472,6 +507,22 @@ struct clip_model {
         float out_min;
     };
     std::map<std::string, clamp_info> clamp_info_map;
+
+    // granite-speech audio encoder (non-blocked)
+    ggml_tensor * input_proj_w = nullptr;
+    ggml_tensor * input_proj_b = nullptr;
+    ggml_tensor * out_mid_w    = nullptr;
+    ggml_tensor * out_mid_b    = nullptr;
+
+    // granite-speech Q-Former projector (non-blocked)
+    ggml_tensor * qf_query   = nullptr;
+    ggml_tensor * qf_ln_w    = nullptr;
+    ggml_tensor * qf_ln_b    = nullptr;
+    ggml_tensor * qf_out_w   = nullptr;
+    ggml_tensor * qf_out_b   = nullptr;
+
+    // granite-speech Q-Former layers
+    std::vector<qformer_layer> qformer_layers;
 
     bool audio_has_avgpool() const {
         return proj_type == PROJECTOR_TYPE_QWEN2A
