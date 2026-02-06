@@ -7161,7 +7161,7 @@ class ConformerAudioModel(MmprojModel):
         return super().tensor_force_quant(name, new_name, bid, n_dims)
 
     def bn_tensor_name(self, key: str, bid: int | None) -> str:
-        return self._batch_norm_tensor_names[key].format(bid)
+        return self._batch_norm_tensor_names[key].format(bid=bid)
 
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
         # fold running_mean, running_var and eps into weight and bias for batch_norm
@@ -7171,17 +7171,18 @@ class ConformerAudioModel(MmprojModel):
             assert bid is not None
             self._batch_norm_tensors[bid][name] = data_torch
 
-            # Wait for all required keys to be present for the batch norm
-            if any(key not in self._batch_norm_tensors[bid] for key in self._batch_norm_tensor_names):
-                return
-
             weight_name = self.bn_tensor_name("weight", bid)
             bias_name = self.bn_tensor_name("bias", bid)
             running_mean_name = self.bn_tensor_name("running_mean", bid)
             running_var_name = self.bn_tensor_name("running_var", bid)
+            tensor_names = [weight_name, bias_name, running_mean_name, running_var_name]
 
-            # If not a tensor needed below, skip
-            if name not in [weight_name, bias_name, running_mean_name, running_var_name]:
+            # Skip this tensor if either we don't have all the parts we need or
+            # it's a part we don't need
+            if (
+                any(n not in self._batch_norm_tensors[bid] for n in tensor_names) or
+                name not in tensor_names
+            ):
                 return
 
             weight = self._batch_norm_tensors[bid][weight_name]
