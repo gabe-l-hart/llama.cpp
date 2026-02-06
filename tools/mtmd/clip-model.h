@@ -93,6 +93,13 @@ struct clip_hparams {
     int32_t n_mel_bins = 0; // whisper preprocessor
     int32_t proj_stack_factor = 0; // ultravox
 
+    // granite-speech Q-Former projector hparams
+    int32_t proj_n_layer         = 0;   // number of Q-Former layers
+    int32_t proj_window_size     = 0;   // window size for windowed cross-attention
+    int32_t proj_downsample_rate = 0; // how many queries per window
+    int32_t proj_n_queries       = 0;   // total learnable queries (window_size / downsample_rate)
+    float   proj_layernorm_eps   = 1e-12f;
+
     // audio-to-mel preprocessor params
     int32_t audio_chunk_len   = -1; // in seconds
     int32_t audio_sample_rate = -1;
@@ -216,6 +223,13 @@ struct clip_layer {
     ggml_tensor * conv_pw1_b    = nullptr;
     ggml_tensor * conv_pw2_w    = nullptr;
     ggml_tensor * conv_pw2_b    = nullptr;
+
+    // granite-speech encoder (Shaw's relative position, conv up/down)
+    ggml_tensor * rel_pos_emb_w = nullptr;
+    ggml_tensor * conv_up_w     = nullptr;
+    ggml_tensor * conv_up_b     = nullptr;
+    ggml_tensor * conv_down_w   = nullptr;
+    ggml_tensor * conv_down_b   = nullptr;
 
     bool has_deepstack() const {
         return deepstack_fc1_w != nullptr;
