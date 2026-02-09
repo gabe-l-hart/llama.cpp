@@ -98,6 +98,23 @@ struct clip_graph_conformer : clip_graph {
     ggml_cgraph * build() override;
 };
 
+struct clip_graph_granite_speech : clip_graph {
+    clip_graph_granite_speech(clip_ctx * ctx, const clip_image_f32 & img) : clip_graph(ctx, img) {}
+    ggml_cgraph * build() override;
+
+    // Build Shaw's relative position attention scores
+    // Computes: pos_attn = einsum("h c d, c r d -> h c r", Q, rel_pos_emb)
+    // Returns pos_attn [seq_len, seq_len, n_head] to add to content attention
+    ggml_tensor * build_shaw_rel_pos_attn(ggml_tensor * rel_pos_emb, ggml_tensor * Q, int seq_len, int il);
+
+    // Build Q-Former layer with self-attention, cross-attention, and FFN
+    ggml_tensor * build_qformer_layer(
+        ggml_tensor * queries,
+        ggml_tensor * encoder_out,
+        const qformer_layer & layer,
+        int il);
+};
+
 struct clip_graph_glm4v : clip_graph {
     clip_graph_glm4v(clip_ctx * ctx, const clip_image_f32 & img) : clip_graph(ctx, img) {}
     ggml_cgraph * build() override;
