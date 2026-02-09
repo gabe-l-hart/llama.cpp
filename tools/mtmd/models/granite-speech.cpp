@@ -306,10 +306,14 @@ ggml_cgraph * clip_graph_granite_speech::build() {
             cb(conv_in, "encoder.{}.conv_norm", il);
 
             // Up projection (GLU gate)
+            // conv_up_w pre-reshaped at conversion: [in_ch, out_ch] = [1024, 4096]
+            // conv_in is [n_embd=1024, seq_len]
+            // mul_mat([1024, 4096], [1024, seq_len]) contracts ne[0]=1024, result is [4096, seq_len]
             ggml_tensor * conv = ggml_mul_mat(ctx0, layer.conv_up_w, conv_in);
             if (layer.conv_up_b) {
                 conv = ggml_add(ctx0, conv, layer.conv_up_b);
             }
+            cb(conv, "encoder.{}.conv_up", il);
 
             // GLU: split and apply sigmoid gate
             {
@@ -317,12 +321,13 @@ ggml_cgraph * clip_graph_granite_speech::build() {
                 ggml_tensor * gate = ggml_sigmoid(ctx0, ggml_view_2d(ctx0, conv, d, conv->ne[1], conv->nb[1], d * conv->nb[0]));
                 conv = ggml_mul(ctx0, ggml_view_2d(ctx0, conv, d, conv->ne[1], conv->nb[1], 0), gate);
             }
+            cb(conv, "encoder.{}.conv_glu", il);
 
-            // Transpose for 1D convolution
+            // Transpose for 1D convolution: [channels, seq_len] -> [seq_len, channels]
             conv = ggml_cont(ctx0, ggml_transpose(ctx0, conv));
 
-            // Depthwise convolution with padding
-            // Kernel size is typically 31 for conformer
+            // Depthwise convolution with same padding (kernel_size typically 31)
+            // Using ggml_ssm_conv with manual padding (same as conformer.cpp pattern)
             const int kernel_size = layer.conv_dw_w->ne[0];
             const int pad = kernel_size / 2;
             conv = ggml_pad(ctx0, conv, pad, 0, 0, 0);
@@ -332,12 +337,14 @@ ggml_cgraph * clip_graph_granite_speech::build() {
             if (layer.conv_dw_b) {
                 conv = ggml_add(ctx0, conv, layer.conv_dw_b);
             }
+            cb(conv, "encoder.{}.conv_dw", il);
 
             // Batch norm (weights already folded into conv_norm)
             conv = ggml_add(ctx0, ggml_mul(ctx0, conv, layer.conv_norm_w), layer.conv_norm_b);
             conv = ggml_silu(ctx0, conv);
 
             // Down projection
+            // conv_down_w pre-reshaped at conversion: [in_ch, out_ch]
             conv = ggml_mul_mat(ctx0, layer.conv_down_w, conv);
             if (layer.conv_down_b) {
                 conv = ggml_add(ctx0, conv, layer.conv_down_b);
