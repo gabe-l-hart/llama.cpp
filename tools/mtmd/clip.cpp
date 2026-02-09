@@ -934,6 +934,10 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
             {
                 builder = std::make_unique<clip_graph_youtuvl>(ctx, img);
             } break;
+        case PROJECTOR_TYPE_GRANITE_SPEECH:
+            {
+                builder = std::make_unique<clip_graph_granite_speech>(ctx, img);
+            } break;
         default:
             GGML_ABORT("missing cgraph builder");
     }
@@ -2956,6 +2960,17 @@ int clip_n_output_tokens(const struct clip_ctx * ctx, struct clip_image_f32 * im
             {
                 n_patches = ((((img->nx + 1) / 2) + 1) / 2 + 1) / 2;
             } break;
+        case PROJECTOR_TYPE_GRANITE_SPEECH:
+            {
+                // Q-Former: each window produces n_queries_per_window tokens
+                const int window_size = ctx->model.hparams.proj_window_size > 0 ? ctx->model.hparams.proj_window_size : 15;
+                const int downsample_rate = ctx->model.hparams.proj_downsample_rate > 0 ? ctx->model.hparams.proj_downsample_rate : 5;
+                const int n_queries_per_window = window_size / downsample_rate;  // 3
+                const int n_frames = img->nx;  // after mel + frame stacking
+                const int n_pad = (window_size - (n_frames % window_size)) % window_size;
+                const int n_windows = (n_frames + n_pad) / window_size;
+                n_patches = n_windows * n_queries_per_window;
+            } break;
         default:
             GGML_ABORT("unsupported projector type");
     }
@@ -3413,6 +3428,28 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
                 }
                 set_input_f32("pos_emb", pos_emb);
             } break;
+        case PROJECTOR_TYPE_GRANITE_SPEECH:
+            {
+                GGML_ASSERT(imgs.entries.size() == 1);
+                const auto & mel_inp = imgs.entries[0];
+                const int seq_len = mel_inp->nx;  // number of frames after preprocessing
+
+                // Build relative position indices for Shaw's attention
+                // rel_pos_emb has shape [2*context-1, d_head]
+                // For positions i,j: index = clamp(i - j + context_size - 1, 0, 2*context-2)
+                const int context_size = 200;  // from model config
+                const int max_idx = 2 * context_size - 2;
+
+                std::vector<int32_t> rel_pos_idx(seq_len * seq_len);
+                for (int i = 0; i < seq_len; i++) {
+                    for (int j = 0; j < seq_len; j++) {
+                        int idx = i - j + context_size - 1;
+                        idx = std::max(0, std::min(idx, max_idx));
+                        rel_pos_idx[i * seq_len + j] = idx;
+                    }
+                }
+                set_input_i32("rel_pos_idx", rel_pos_idx);
+            } break;
         default:
             GGML_ABORT("Unknown projector type");
     }
@@ -3555,6 +3592,8 @@ int clip_n_mmproj_embd(const struct clip_ctx * ctx) {
             return ctx->model.position_embeddings->ne[0];
         case PROJECTOR_TYPE_GLM4V:
             return ctx->model.mm_ffn_down_w->ne[1];
+        case PROJECTOR_TYPE_GRANITE_SPEECH:
+            return ctx->model.qf_out_w->ne[1];
         default:
             GGML_ABORT("Unknown projector type");
     }
