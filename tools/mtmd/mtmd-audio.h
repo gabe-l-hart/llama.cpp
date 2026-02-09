@@ -77,6 +77,15 @@ struct mtmd_audio_preprocessor_conformer : mtmd_audio_preprocessor {
     mtmd_audio_cache cache;
 };
 
+struct mtmd_audio_preprocessor_granite_speech : mtmd_audio_preprocessor {
+    mtmd_audio_preprocessor_granite_speech(const clip_ctx * ctx) : mtmd_audio_preprocessor(ctx) {}
+    void initialize() override;
+    bool preprocess(const float * samples, size_t n_samples, std::vector<mtmd_audio_mel> & output) override;
+
+  private:
+    mtmd_audio_cache cache;
+};
+
 //
 // streaming ISTFT - converts spectrogram frames back to audio one frame at a time
 //
