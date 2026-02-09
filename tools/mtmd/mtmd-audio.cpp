@@ -635,7 +635,7 @@ bool mtmd_audio_preprocessor_conformer::preprocess(const float *                
 void mtmd_audio_preprocessor_granite_speech::initialize() {
     cache.fill_sin_cos_table(hparams.audio_n_fft);
     cache.fill_hann_window(hparams.audio_window_len, true);
-    cache.fill_mel_filterbank_matrix(hparams.n_mel_bins, hparams.audio_n_fft, hparams.audio_sample_rate);
+    cache.fill_mel_filterbank_matrix(hparams.n_mel_bins / 2, hparams.audio_n_fft, hparams.audio_sample_rate);
 }
 
 bool mtmd_audio_preprocessor_granite_speech::preprocess(const float *                 samples,
@@ -646,7 +646,7 @@ bool mtmd_audio_preprocessor_granite_speech::preprocess(const float *           
     }
 
     filter_params params;
-    params.n_mel            = hparams.n_mel_bins;
+    params.n_mel            = hparams.n_mel_bins / 2;
     params.n_fft_bins       = 1 + (hparams.audio_n_fft / 2);
     params.hann_window_size = hparams.audio_window_len;
     params.hop_length       = hparams.audio_hop_len;
@@ -666,8 +666,7 @@ bool mtmd_audio_preprocessor_granite_speech::preprocess(const float *           
     // Granite Speech: logmel = torch.maximum(logmel, mx - 8.0).div_(4).add_(1)
     // log_mel_spectrogram: mmax -= 8.0; clamp to mmax; (x + 4.0) / 4.0
     mtmd_audio_mel mel_out;
-    bool ok = log_mel_spectrogram(samples, n_samples, 4, params, cache, mel_out);
-    if (!ok) {
+    if (!log_mel_spectrogram(samples, n_samples, 4, params, cache, mel_out)) {
         return false;
     }
 
@@ -677,10 +676,10 @@ bool mtmd_audio_preprocessor_granite_speech::preprocess(const float *           
     if (n_frames % 2 == 1) {
         n_frames -= 1;  // drop last frame if odd
     }
-    int n_stacked_frames = n_frames / 2;
+    const int n_stacked_frames = n_frames / 2;
 
     mtmd_audio_mel stacked_out;
-    stacked_out.n_mel = 2 * hparams.n_mel_bins;
+    stacked_out.n_mel = hparams.n_mel_bins;
     stacked_out.n_len = n_stacked_frames;
     stacked_out.n_len_org = mel_out.n_len_org;
     stacked_out.data.resize(stacked_out.n_mel * stacked_out.n_len);
@@ -688,27 +687,28 @@ bool mtmd_audio_preprocessor_granite_speech::preprocess(const float *           
     // mel_out.data layout: [n_mel][n_len] (mel bin major)
     // We need to stack frame pairs: for frame i, concatenate mel[:,2i] and mel[:,2i+1]
     // Output layout should be: [n_len][n_mel] (frame major) for the encoder
+    const int n_mel_in = hparams.n_mel_bins / 2;
     for (int t = 0; t < n_stacked_frames; t++) {
         int src_t0 = 2 * t;
         int src_t1 = 2 * t + 1;
-        for (int m = 0; m < hparams.n_mel_bins; m++) {
+        for (int m = 0; m < n_mel_in; m++) {
             // First 80 features from frame 2t
-            stacked_out.data[t * hparams.n_mel_bins * 2 + m] = mel_out.data[m * mel_out.n_len + src_t0];
+            stacked_out.data[t * hparams.n_mel_bins + m] = mel_out.data[m * mel_out.n_len + src_t0];
             // Second 80 features from frame 2t+1
-            stacked_out.data[t * hparams.n_mel_bins * 2 + hparams.n_mel_bins + m] = mel_out.data[m * mel_out.n_len + src_t1];
+            stacked_out.data[t * hparams.n_mel_bins + n_mel_in + m] = mel_out.data[m * mel_out.n_len + src_t1];
         }
     }
 
     // Transpose to mel-major layout expected by the rest of the system: [n_mel][n_len]
     mtmd_audio_mel final_out;
-    final_out.n_mel = 2 * hparams.n_mel_bins;
+    final_out.n_mel = hparams.n_mel_bins;
     final_out.n_len = n_stacked_frames;
     final_out.n_len_org = mel_out.n_len_org;
     final_out.data.resize(final_out.n_mel * final_out.n_len);
 
     for (int t = 0; t < n_stacked_frames; t++) {
-        for (int m = 0; m < 2 * hparams.n_mel_bins; m++) {
-            final_out.data[m * n_stacked_frames + t] = stacked_out.data[t * 2 * hparams.n_mel_bins + m];
+        for (int m = 0; m < hparams.n_mel_bins; m++) {
+            final_out.data[m * n_stacked_frames + t] = stacked_out.data[t * hparams.n_mel_bins + m];
         }
     }
 
