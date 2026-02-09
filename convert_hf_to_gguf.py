@@ -12180,16 +12180,14 @@ class GraniteSpeechModel(ConformerAudioModel):
         self.hparams_audio["intermediate_size"] = encoder_config["hidden_dim"] * encoder_config.get("feedforward_mult", 4)
         self.hparams_audio["num_attention_heads"] = encoder_config["num_heads"]
         self.hparams_audio["num_hidden_layers"] = encoder_config["num_layers"]
-
         super().set_gguf_parameters()
 
-        # Projector type
+        # Projector params
         self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.GRANITE_SPEECH)
+        self.gguf_writer.add_audio_num_mel_bins(encoder_config.get("input_dim", 160))
 
         # Encoder-specific parameters
         self.gguf_writer.add_audio_attention_layernorm_eps(1e-5)  # default LayerNorm eps
-        self.gguf_writer.add_audio_context_size(encoder_config.get("context_size", 200))
-        self.gguf_writer.add_audio_input_dim(encoder_config.get("input_dim", 160))
 
         # Q-Former projector parameters
         # NOTE: Number of queries per window = window_size / downsample_rate

@@ -351,10 +351,6 @@ class Keys:
             BLOCK_COUNT     = "clip.audio.projector.block_count"         # granite-speech
             LAYERNORM_EPS   = "clip.audio.projector.layer_norm_epsilon"  # granite-speech
 
-        class Encoder:
-            CONTEXT_SIZE    = "clip.audio.encoder.context_size"  # granite-speech (for Shaw's relative pos)
-            INPUT_DIM       = "clip.audio.encoder.input_dim"     # granite-speech
-
     class Diffusion:
         SHIFT_LOGITS        = "diffusion.shift_logits"
 
