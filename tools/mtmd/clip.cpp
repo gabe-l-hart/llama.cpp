@@ -2220,19 +2220,8 @@ struct clip_model_loader {
                     for (int il = 0; il < hparams.n_layer; ++il) {
                         auto & layer = model.layers[il];
 
-                        // Attention
-                        layer.ln_1_w = get_tensor(string_format(TN_LN_1, prefix, il, "weight"));
-                        layer.ln_1_b = get_tensor(string_format(TN_LN_1, prefix, il, "bias"), false);
-                        layer.q_w    = get_tensor(string_format(TN_ATTN_Q, prefix, il, "weight"));
-                        layer.q_b    = get_tensor(string_format(TN_ATTN_Q, prefix, il, "bias"), false);
-                        layer.k_w    = get_tensor(string_format(TN_ATTN_K, prefix, il, "weight"));
-                        layer.k_b    = get_tensor(string_format(TN_ATTN_K, prefix, il, "bias"), false);
-                        layer.v_w    = get_tensor(string_format(TN_ATTN_V, prefix, il, "weight"));
-                        layer.v_b    = get_tensor(string_format(TN_ATTN_V, prefix, il, "bias"), false);
-                        layer.o_w    = get_tensor(string_format(TN_ATTN_OUTPUT, prefix, il, "weight"));
-                        layer.o_b    = get_tensor(string_format(TN_ATTN_OUTPUT, prefix, il, "bias"), false);
-                        layer.ln_2_w = get_tensor(string_format(TN_LN_2, prefix, il, "weight"), false);
-                        layer.ln_2_b = get_tensor(string_format(TN_LN_2, prefix, il, "bias"), false);
+                        // NOTE: Attention loaded in common layer loop above
+                        // TN_LN_1, TN_ATTN_Q, TN_ATTN_K, TN_ATTN_V, TN_ATTN_OUTPUT, TN_LN_2
 
                         // Shaw's relative position embedding
                         layer.rel_pos_emb_w = get_tensor(string_format(TN_REL_POS_EMB, prefix, il, "weight"));
@@ -2250,12 +2239,9 @@ struct clip_model_loader {
                         layer.conv_norm_b  = get_tensor(string_format(TN_CONV_NORM, prefix, il, "bias"), false);
 
                         // Feed-forward 1
+                        // NOTE: TN_FFN_UP / TN_FFN_DOWN loaded in common layer loop above
                         layer.ff_norm_w   = get_tensor(string_format(TN_FFN_NORM, prefix, il, "weight"));
                         layer.ff_norm_b   = get_tensor(string_format(TN_FFN_NORM, prefix, il, "bias"), false);
-                        layer.ff_up_w     = get_tensor(string_format(TN_FFN_UP, prefix, il, "weight"));
-                        layer.ff_up_b     = get_tensor(string_format(TN_FFN_UP, prefix, il, "bias"), false);
-                        layer.ff_down_w   = get_tensor(string_format(TN_FFN_DOWN, prefix, il, "weight"));
-                        layer.ff_down_b   = get_tensor(string_format(TN_FFN_DOWN, prefix, il, "bias"), false);
 
                         // Feed-forward 2
                         layer.ff_norm_1_w = get_tensor(string_format(TN_FFN_NORM_1, prefix, il, "weight"));
