@@ -12221,6 +12221,14 @@ class GraniteSpeechModel(ConformerAudioModel):
             yield from super(ConformerAudioModel, self).modify_tensors(v_tensor, v_name, bid)
             return
 
+        # Handle Conv1d pointwise conv weights - reshape from [1, out, in] to [out, in] for mul_mat
+        if "encoder.layers." in name and (".up_conv." in name or ".down_conv." in name):
+            if name.endswith(".weight"):
+                # Conv1d weight: [out_channels, in_channels, kernel=1] -> [in_channels, out_channels]
+                assert data_torch.shape[2] == 1, f"Expected kernel_size=1 for pointwise conv, got {data_torch.shape}"
+                data_torch = data_torch.squeeze(2)
+            # Bias is 1D [out_channels], no change needed
+
         # Pass to parent for batch norm handling and tensor mapping
         yield from super().modify_tensors(data_torch, name, bid)
 
