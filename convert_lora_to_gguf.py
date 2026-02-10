@@ -236,6 +236,9 @@ class LoraTorchTensor:
 
 def get_base_tensor_name(lora_tensor_name: str) -> str:
     base_name = lora_tensor_name.replace("base_model.model.", "")
+    # For multimodal models, LoRA targets the language model component
+    base_name = base_name.replace("language_model.model.", "")
+    base_name = base_name.replace("language_model.", "")
     base_name = base_name.replace(".lora_A.weight", ".weight")
     base_name = base_name.replace(".lora_B.weight", ".weight")
     # models produced by mergekit-extract-lora have token embeddings in the adapter
@@ -360,10 +363,17 @@ if __name__ == '__main__':
         hparams = ModelBase.load_hparams(dir_base_model, False)
 
     with torch.inference_mode():
+        # For multimodal models, LoRA typically targets the language model component
+        # Use text_config's architecture if available
+        arch = hparams["architectures"][0]
+        if (text_config := hparams.get("text_config")) and (archs := text_config.get("architectures")):
+            arch = archs[0]
+            logger.info(f"Multimodal model detected, using text model architecture: {arch}")
+
         try:
-            model_class = ModelBase.from_model_architecture(hparams["architectures"][0])
+            model_class = ModelBase.from_model_architecture(arch)
         except NotImplementedError:
-            logger.error(f"Model {hparams['architectures'][0]} is not supported")
+            logger.error(f"Model {arch} is not supported")
             sys.exit(1)
 
         class LoraModel(model_class):  # ty: ignore[unsupported-base]
