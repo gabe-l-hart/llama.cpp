@@ -194,7 +194,7 @@ ggml_cgraph * clip_graph_granite_speech::build() {
     const int n_features = img.ny;  // Should be 160 after frame stacking
 
     ggml_tensor * inp = build_inp_raw(1);
-    cb(inp, "input", -1);
+    // NOTE: Don't use cb on inp as it will get renamed
 
     // Input is [n_frames, n_features, 1] from build_inp_raw
     // Transpose to [n_features, n_frames] for linear projection
