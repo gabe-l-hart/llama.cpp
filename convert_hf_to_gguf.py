@@ -12204,6 +12204,12 @@ class GraniteSpeechModel(ConformerAudioModel):
     def is_audio_tensor(name: str):
         return any(p in name for p in ["encoder.", "projector."])
 
+    def tensor_force_quant(self, name, new_name, bid, n_dims):
+        del bid, name, n_dims
+        if "conv_dw" in new_name:
+            return gguf.GGMLQuantizationType.F32
+        return False
+
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
         # Skip language model tensors
         if name.startswith("language_model."):
