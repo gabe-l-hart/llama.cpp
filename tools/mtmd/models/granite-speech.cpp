@@ -210,9 +210,8 @@ ggml_cgraph * clip_graph_granite_speech::build() {
 
     const int seq_len = cur->ne[1];
 
-    // Store intermediate output for skip connection (after layer 8)
-    ggml_tensor * skip_connection = nullptr;
-    const int skip_layer = 8;
+    // Layer with extra outputs in the middle
+    const int mid_layer = hparams.n_layer / 2;
 
     // Conformer encoder layers
     for (int il = 0; il < hparams.n_layer; il++) {
@@ -371,27 +370,21 @@ ggml_cgraph * clip_graph_granite_speech::build() {
 
         cb(cur, "encoder.layer.{}.out", il);
 
-        // Store skip connection at layer 8
-        if (il == skip_layer - 1 && model.out_mid_w) {
-            skip_connection = ggml_mul_mat(ctx0, model.out_mid_w, cur);
-            if (model.out_mid_b) {
-                skip_connection = ggml_add(ctx0, skip_connection, model.out_mid_b);
+        // Perform extra outputs for middle layer
+        if (il == mid_layer - 1) {
+            ggml_tensor * hidden_states_mid = ggml_mul_mat(ctx0, model.pre_encode_out_w, cur);
+            if (model.pre_encode_out_b) {
+                hidden_states_mid = ggml_add(ctx0, hidden_states_mid, model.pre_encode_out_b);
             }
-            cb(skip_connection, "encoder.skip", -1);
+            hidden_states_mid = ggml_soft_max(ctx0, hidden_states_mid);
+            hidden_states_mid = ggml_mul_mat(ctx0, model.out_mid_w, hidden_states_mid);
+            if (model.out_mid_b) {
+                hidden_states_mid = ggml_add(ctx0, hidden_states_mid, model.out_mid_b);
+            }
+            cur = ggml_add(ctx0, cur, hidden_states_mid);
+            cb(cur, "middle.out", il);
         }
     }
-
-    // Final encoder output projection
-    cur = ggml_mul_mat(ctx0, model.mm_0_w, cur);
-    if (model.mm_0_b) {
-        cur = ggml_add(ctx0, cur, model.mm_0_b);
-    }
-
-    // Add skip connection if present
-    if (skip_connection) {
-        cur = ggml_add(ctx0, cur, skip_connection);
-    }
-    cb(cur, "encoder.out", -1);
 
     // Q-Former projector
     {

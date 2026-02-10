@@ -2217,8 +2217,8 @@ struct clip_model_loader {
                     model.out_mid_b    = get_tensor(string_format(TN_OUT_MID, "bias"), false);
 
                     // Encoder output projection
-                    model.mm_0_w = get_tensor(string_format(TN_PRE_ENCODE_OUT, "weight"));
-                    model.mm_0_b = get_tensor(string_format(TN_PRE_ENCODE_OUT, "bias"), false);
+                    model.pre_encode_out_w = get_tensor(string_format(TN_PRE_ENCODE_OUT, "weight"));
+                    model.pre_encode_out_b = get_tensor(string_format(TN_PRE_ENCODE_OUT, "bias"), false);
 
                     // Encoder per-layer tensors
                     for (int il = 0; il < hparams.n_layer; ++il) {
