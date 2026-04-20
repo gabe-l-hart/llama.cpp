@@ -4138,6 +4138,7 @@ class VisionProjectorType:
     YOUTUVL = "youtuvl"
     NEMOTRON_V2_VL = "nemotron_v2_vl"
     HUNYUANOCR     = "hunyuanocr"
+    GRANITE_SPEECH = "granite_speech"  # audio
 
 
 # Items here are (block size, type size)
