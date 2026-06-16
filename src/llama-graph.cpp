@@ -1085,14 +1085,16 @@ ggml_tensor * llm_graph_context::build_cvec(
 ggml_tensor * llm_graph_context::build_lora_mm(
           ggml_tensor * w,
           ggml_tensor * cur,
-          ggml_tensor * w_s) const {
+          ggml_tensor * w_s,
+          ggml_tensor * lora_mask) const {
     ggml_tensor * res = ggml_mul_mat(ctx0, w, cur);
 
     if (w_s) {
         res = ggml_mul(ctx0, res, w_s);
     }
 
-    for (const auto & lora : *loras) {
+    for (size_t i = 0; i < loras->size(); ++i) {
+        const auto & lora = (*loras)[i];
         llama_adapter_lora_weight * lw = lora.first->get_weight(w);
         if (lw == nullptr) {
             continue;
@@ -1107,6 +1109,20 @@ ggml_tensor * llm_graph_context::build_lora_mm(
                 );
 
         ab_cur = ggml_scale(ctx0, ab_cur, scale);
+
+        if (lora_mask) {
+            ggml_tensor * adapter_mask = ggml_view_2d(
+                    ctx0, lora_mask,
+                    lora_mask->ne[0], 1,
+                    lora_mask->nb[1],
+                    i * lora_mask->nb[1]
+                    );
+
+            adapter_mask = ggml_repeat(ctx0, adapter_mask, ab_cur);
+
+            ab_cur = ggml_mul(ctx0, ab_cur, adapter_mask);
+        }
+
         res = ggml_add(ctx0, res, ab_cur);
     }
 
@@ -1117,7 +1133,8 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
           ggml_tensor * w,   // ggml_tensor * as
           ggml_tensor * cur, // ggml_tensor * b
           ggml_tensor * ids,
-          ggml_tensor * w_s) const {
+          ggml_tensor * w_s,
+          ggml_tensor * lora_mask) const {
     ggml_tensor * res = ggml_mul_mat_id(ctx0, w, cur, ids);
 
     if (w_s) {
@@ -1128,7 +1145,8 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
         s = ggml_get_rows(ctx0, s, ids);
         res = ggml_mul(ctx0, res, s);
     }
-    for (const auto & lora : *loras) {
+    for (size_t i = 0; i < loras->size(); ++i) {
+        const auto & lora = (*loras)[i];
         llama_adapter_lora_weight * lw = lora.first->get_weight(w);
         if (lw == nullptr) {
             continue;
@@ -1145,6 +1163,20 @@ ggml_tensor * llm_graph_context::build_lora_mm_id(
                 );
 
         ab_cur = ggml_scale(ctx0, ab_cur, scale);
+
+        if (lora_mask) {
+            ggml_tensor * adapter_mask = ggml_view_2d(
+                    ctx0, lora_mask,
+                    lora_mask->ne[0], 1,
+                    lora_mask->nb[1],
+                    i * lora_mask->nb[1]
+                    );
+
+            adapter_mask = ggml_repeat(ctx0, adapter_mask, ab_cur);
+
+            ab_cur = ggml_mul(ctx0, ab_cur, adapter_mask);
+        }
+
         res = ggml_add(ctx0, res, ab_cur);
     }
 
