@@ -87,5 +87,8 @@ struct llama_adapter_lora {
     }
 };
 
-using llama_adapter_loras = std::unordered_map<llama_adapter_lora *, float>;
+// Adapters are stored in order so that they can be referenced by index. This
+// matches the storage order in llama-server and is used by models that
+// auto-select adapters (eg Granite Switch).
+using llama_adapter_loras = std::vector<std::pair<llama_adapter_lora *, float>>;
 using llama_adapter_loras_ptr = std::unique_ptr<llama_adapter_loras>;

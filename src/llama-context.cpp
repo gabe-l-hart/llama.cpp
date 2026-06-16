@@ -1249,7 +1249,7 @@ void llama_context::set_adapters_lora(llama_adapter_lora ** adapters, size_t n_a
 
     for (size_t i = 0; i < n_adapters; i ++) {
         if (scales[i] != 0.0f) {
-            loras->insert({adapters[i], scales[i]});
+            loras->push_back({adapters[i], scales[i]});
         }
     }
 
