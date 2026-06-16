@@ -97,6 +97,7 @@ static const std::map<llm_arch, const char *> LLM_ARCH_NAMES = {
     { LLM_ARCH_RWKV7,            "rwkv7"            },
     { LLM_ARCH_ARWKV7,           "arwkv7"           },
     { LLM_ARCH_GRANITE,          "granite"          },
+    { LLM_ARCH_GRANITE_SWITCH,   "graniteswitch"    },
     { LLM_ARCH_GRANITE_MOE,      "granitemoe"       },
     { LLM_ARCH_GRANITE_HYBRID,   "granitehybrid"    },
     { LLM_ARCH_CHAMELEON,        "chameleon"        },
@@ -213,6 +214,18 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
     { LLM_KV_TIME_DECAY_EXTRA_DIM,              "%s.time_decay_extra_dim"              },
     { LLM_KV_RESIDUAL_SCALE,                    "%s.residual_scale"                    },
     { LLM_KV_EMBEDDING_SCALE,                   "%s.embedding_scale"                   },
+
+    // Granite Switch
+    { LLM_KV_ADAPTER_COUNT,                     "%s.adapter_count"                     },
+    { LLM_KV_ADAPTER_RANKS,                     "%s.adapter_ranks"                     },
+    { LLM_KV_MAX_LORA_RANK,                     "%s.max_lora_rank"                     },
+    { LLM_KV_ADAPTER_TOKEN_IDS,                 "%s.adapter_token_ids"                 },
+    { LLM_KV_ADAPTER_SUBSTITUTE_TOKEN_IDS,      "%s.adapter_substitute_token_ids"      },
+    { LLM_KV_CONTROL_TOKEN_GAIN,                "%s.control_token_gain"                },
+    { LLM_KV_SWITCH_HEAD_DIM,                   "%s.switch_head_dim"                   },
+    { LLM_KV_PROJECTION_HEAD_DIM,               "%s.projection_head_dim"               },
+    { LLM_KV_LORA_TARGET_MODULES,               "%s.lora_target_modules"               },
+
     { LLM_KV_TOKEN_SHIFT_COUNT,                 "%s.token_shift_count"                 },
     { LLM_KV_INTERLEAVE_MOE_LAYER_STEP,         "%s.interleave_moe_layer_step"         },
     { LLM_KV_FULL_ATTENTION_INTERVAL,           "%s.full_attention_interval"           },

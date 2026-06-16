@@ -221,8 +221,10 @@ static llama_model * llama_model_mapping(llm_arch arch, const llama_model_params
             return new llama_model_rwkv7(params);
         case LLM_ARCH_ARWKV7:
             return new llama_model_arwkv7(params);
-        case LLM_ARCH_GRANITE:
+       case LLM_ARCH_GRANITE:
             return new llama_model_granite(params);
+        case LLM_ARCH_GRANITE_SWITCH:
+            return new llama_model_granite_switch(params);
         case LLM_ARCH_GRANITE_MOE:
             return new llama_model_granite_moe(params);
         case LLM_ARCH_MINICPM:

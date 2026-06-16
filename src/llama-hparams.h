@@ -172,6 +172,16 @@ struct llama_hparams {
     float f_embedding_scale = 0.0f;
     float f_attention_scale = 0.0f;
 
+    // Granite Switch parameters
+    uint32_t n_adapters = 0;
+    uint32_t max_lora_rank = 0;
+    float f_control_token_gain = 15.0f;
+    uint32_t n_switch_head_dim = 32;
+    uint32_t n_projection_head_dim = 64;
+    std::array<int32_t, LLAMA_MAX_LAYERS> adapter_ranks_arr;
+    std::array<int32_t, LLAMA_MAX_LAYERS> adapter_token_ids_arr;
+    std::array<int32_t, LLAMA_MAX_LAYERS> adapter_substitute_token_ids_arr;
+
     // grok-2
     float    f_attn_out_scale = 0.0f;
     uint32_t attn_temp_length = 0;
