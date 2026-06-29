@@ -476,3 +476,421 @@ class Granite4VisionMmprojModel(MmprojModel):
             yield from super().modify_tensors(data_torch, new_name, new_bid)
             return
         yield from super().modify_tensors(data_torch, name, bid)
+
+
+@ModelBase.register("GraniteSwitchForCausalLM")
+class GraniteSwitchModel(GraniteModel):
+    """Conversion for IBM's GraniteSwitchForCausalLM with dynamic adapter selection."""
+    model_arch = gguf.MODEL_ARCH.GRANITE_SWITCH
+
+    def set_gguf_parameters(self):
+        """Granite Switch extends Granite with adapter switching parameters."""
+        super().set_gguf_parameters()
+
+        # The switch layer is not a decoder layer - adjust block_count
+        # HF num_hidden_layers includes the switch layer, but llama.cpp
+        # expects block_count to be just the decoder layers
+        if self.hparams.get("num_adapters", 0) > 0:
+            self.hparams["num_hidden_layers"] = self.hparams.get("num_hidden_layers", 40) - 1
+            self.block_count = self.hparams["num_hidden_layers"]
+            logger.info("gguf: adjusted block_count to %d (subtracting switch layer)", self.block_count)
+
+        config = self.hparams
+
+        n_adapters = config.get("num_adapters", 0)
+        if n_adapters == 0:
+            raise ValueError("Not a Granite Switch model: num_adapters not found or is 0")
+
+        self.gguf_writer.add_adapter_count(n_adapters)
+        logger.info("gguf: (graniteswitch) adapter_count = %s", n_adapters)
+
+        adapter_ranks = config.get("adapter_ranks", [])
+        self.gguf_writer.add_adapter_ranks(adapter_ranks)
+        logger.info("gguf: (graniteswitch) adapter_ranks = %s", adapter_ranks)
+
+        max_lora_rank = max(adapter_ranks) if adapter_ranks else 0
+        self.gguf_writer.add_max_lora_rank(max_lora_rank)
+        logger.info("gguf: (graniteswitch) max_lora_rank = %s", max_lora_rank)
+
+        adapter_token_ids = config.get("adapter_token_ids", [])
+        self.gguf_writer.add_adapter_token_ids(adapter_token_ids)
+        logger.info("gguf: (graniteswitch) adapter_token_ids = %s", adapter_token_ids)
+
+        adapter_substitute_token_ids = config.get("adapter_substitute_token_ids", [])
+        self.gguf_writer.add_adapter_substitute_token_ids(adapter_substitute_token_ids)
+        logger.info("gguf: (graniteswitch) adapter_substitute_token_ids = %s", adapter_substitute_token_ids)
+
+        control_token_gain = config.get("control_token_gain", 15.0)
+        self.gguf_writer.add_control_token_gain(control_token_gain)
+        logger.info("gguf: (graniteswitch) control_token_gain = %s", control_token_gain)
+
+        switch_head_dim = config.get("switch_head_dim", 32)
+        self.gguf_writer.add_switch_head_dim(switch_head_dim)
+        logger.info("gguf: (graniteswitch) switch_head_dim = %s", switch_head_dim)
+
+        projection_head_dim = config.get("projection_head_dim", 64)
+        self.gguf_writer.add_projection_head_dim(projection_head_dim)
+        logger.info("gguf: (graniteswitch) projection_head_dim = %s", projection_head_dim)
+
+
+        lora_target_modules = config.get("lora_target_modules", [])
+        self.gguf_writer.add_lora_target_modules(lora_target_modules)
+        logger.info("gguf: (graniteswitch) lora_target_modules = %s", lora_target_modules)
+
+    def prepare_tensors(self):
+        """Prepare all tensors for writing, including fused B slice concatenation."""
+        # First, collect all tensors
+        all_tensors = []
+        for new_name, data_torch in self.get_tensors():
+   # Convert unsupported dtypes to float32 (same as parent implementation)
+            if data_torch.dtype not in (torch.float16, torch.float32):
+                data_torch = data_torch.to(torch.float32)
+            
+            for result in self.modify_tensors(data_torch, new_name, None):
+                if isinstance(result, tuple) and len(result) == 2:
+                    nn, dt = result
+                    # Ensure yielded tensors are also in supported dtype
+                    if dt.dtype not in (torch.float16, torch.float32):
+                        dt = dt.to(torch.float32)
+                    all_tensors.append((nn, dt))
+        
+        # Add concatenated fused B tensors
+        for (layer_id, module), adapters in self._fused_b_slices.items():
+            module_map = {
+                "qkv_proj": "attn_qkv",
+                "input_linear": "ffn_gate_up",
+            }
+            gguf_module = module_map.get(module)
+            if gguf_module:
+                for gguf_name, data in self._yield_fused_b_tensors(layer_id, module, gguf_module):
+                    if data.dtype not in (torch.float16, torch.float32):
+                        data = data.to(torch.float32)
+                    all_tensors.append((gguf_name, data))
+        
+        # Sort tensors by name for consistent output
+        self_tensors = []
+        for new_name, data_torch in sorted(all_tensors, key=lambda x: x[0]):
+            self_tensors.append((new_name, data_torch))
+        
+        self._model_tensors = {self.model_arch: [t[0] for t in self_tensors]}
+        
+        for new_name, data_torch in self_tensors:
+            self.gguf_writer.add_tensor(new_name, data_torch.numpy())
+
+    @classmethod
+    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
+        name, gen = item
+        # Skip multimodal tensors
+        if (
+            name.startswith(("encoder."))
+            or "image_" in name
+            or "layerwise_projectors" in name
+            or "spatial_projectors" in name
+        ):
+            return
+        # Skip config tensors that are not model weights
+        if name in ("model.adapter_token_ids",):
+            return
+        # Skip switch lookup table (can be derived from adapter_token_ids + adapter_substitute_token_ids)
+        if name.endswith(".switch.control_to_substitute_lut"):
+            return
+        return super().filter_tensors(item)
+
+  def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        """Handle Granite Switch tensor naming conventions."""
+        # Handle fused module adapter tensors (qkv_proj, shared_mlp with slices)
+        if re.search(r"\.lora_(?:A|B)_slices\.", name):
+            yield from self._handle_fused_adapter_tensor(data_torch, name, bid)
+            return
+        # Check if this is a non-fused adapter tensor (e.g., o_proj.lora_A)
+        if re.search(r"\.(?:o_proj|output_linear)\.(?:lora_A|lora_B)$", name):
+            yield from self._handle_adapter_tensor(data_torch, name, bid)
+            return
+        # Handle base_layer weights for LoRA modules
+        if ".base_layer.weight" in name:
+            yield from self._handle_base_layer_tensor(data_torch, name, bid)
+            return
+        # Handle layer norms - map HF names to GGUF names with layer offset
+        if "input_layernorm.weight" in name:
+            layer_id = None
+            for i, part in enumerate(name.split(".")):
+                if part == "layers" and i + 1 < len(name.split(".")):
+                    try:
+                        layer_id = int(name.split(".")[i + 1])
+                        break
+                    except ValueError:
+                        continue
+            if layer_id is not None:
+                # HF layer 0 -> GGUF layer 1 (switch layer takes GGUF layer 0)
+                yield from [(f"blk.{layer_id + 1}.attn_norm.weight", data_torch)]
+                return
+        if "post_attention_layernorm.weight" in name:
+            layer_id = None
+            for i, part in enumerate(name.split(".")):
+                if part == "layers" and i + 1 < len(name.split(".")):
+                    try:
+                        layer_id = int(name.split(".")[i + 1])
+                        break
+                    except ValueError:
+                        continue
+            if layer_id is not None:
+                yield from [(f"blk.{layer_id + 1}.ffn_norm.weight", data_torch)]
+                return
+
+        yield from super().modify_tensors(data_torch, name, bid)
+
+    def _handle_base_layer_tensor(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        """Handle base_layer.weight tensors, mapping to standard tensor names."""
+        parts = name.split(".")
+
+        # Extract layer id
+        layer_id = None
+        for i, part in enumerate(parts):
+            if part == "layers" and i + 1 < len(parts):
+                try:
+                    layer_id = int(parts[i + 1])
+                    break
+                except ValueError:
+                    continue
+
+        if layer_id is None:
+            logger.warning("Skipping base_layer tensor without valid layer_id: %s", name)
+            return
+
+        # Add offset of +1 because layer 0 in GGUF is reserved for the switch layer
+        # HF layers 0-39 become GGUF layers 1-40
+        layer_id += 1
+
+        # Find the module name (the part before base_layer)
+        module = None
+        for i, part in enumerate(parts):
+            if part == "base_layer":
+                if i > 0:
+                    module = parts[i - 1]
+                break
+
+        if module is None:
+            logger.warning("Could not parse module from: %s", name)
+            return
+
+        # Map HuggingFace module names to GGUF tensor types
+        module_to_tensor = {
+            "qkv_proj": ("attn_qkv", None),
+            "o_proj": ("attn_output", None),
+            "input_linear": ("ffn_gate", "ffn_up"),
+            "output_linear": ("ffn_down", None),
+        }
+
+        if module not in module_to_tensor:
+            logger.warning("Unknown base_layer module %s, skipping", module)
+            return
+
+        gguf_prefix = module_to_tensor[module][0]
+        gguf_suffix = module_to_tensor[module][1]
+
+        if gguf_suffix:
+            # For fused modules like input_linear (gate + up fused), we need to split
+            # The tensor shape is [2 * intermediate_size, hidden_size]
+            # Split into two tensors of [intermediate_size, hidden_size]
+            mid_dim = data_torch.shape[0] // 2
+            gate_data = data_torch[:mid_dim]
+            up_data = data_torch[mid_dim:]
+            yield f"blk.{layer_id}.ffn_gate.weight", gate_data
+            yield f"blk.{layer_id}.ffn_up.weight", up_data
+        else:
+            yield f"blk.{layer_id}.{gguf_prefix}.weight", data_torch
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Pre-collect fused adapter B slices for concatenation
+        self._fused_b_slices = {}  # {(layer_id, module): {adapter_id: [slice_data, ...]}}
+
+    def _collect_fused_b_slice(self, layer_id, module, adapter_id, slice_data):
+        """Collect a B slice for later concatenation."""
+        key = (layer_id, module)
+        if key not in self._fused_b_slices:
+            self._fused_b_slices[key] = {}
+        if adapter_id not in self._fused_b_slices[key]:
+            self._fused_b_slices[key][adapter_id] = []
+        self._fused_b_slices[key][adapter_id].append(slice_data)
+
+    def _yield_fused_b_tensors(self, layer_id, module, gguf_module):
+        """Yield concatenated B tensors from collected slices."""
+        key = (layer_id, module)
+        if key not in self._fused_b_slices:
+            return
+        
+        for adapter_id, slices in sorted(self._fused_b_slices[key].items()):
+            # Concatenate slices along the output features dimension
+            combined = torch.cat(slices, dim=0)  # [total_out_features, max_lora_rank]
+            gguf_name = f"blk.{layer_id}.{gguf_module}.lora_b.adapter_{adapter_id}.weight"
+            yield gguf_name, combined
+
+    def _handle_fused_adapter_tensor(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        """Handle fused module adapter tensors (qkv_proj, shared_mlp with slices).
+        
+        For fused modules, Lora_A weights are shared across slices (only first slice has them).
+        Lora_B weights have different output dimensions per slice and need to be concatenated.
+        """
+        parts = name.split(".")
+
+       # Find the layer index
+        layer_id = None
+        for i, part in enumerate(parts):
+            if part == "layers" and i + 1 < len(parts):
+                try:
+                    layer_id = int(parts[i + 1])
+                    break
+                except ValueError:
+                    continue
+
+        if layer_id is None:
+            logger.warning("Skipping fused adapter tensor without valid layer_id: %s", name)
+            return
+
+        # Layer 0 is the switch layer - skip adapter tensors for switch layer
+        if layer_id == 0:
+            logger.info("Skipping switch layer fused adapter tensor: %s", name)
+            return
+
+        # Add offset of +1 because layer 0 is reserved for the switch layer
+        layer_id += 1
+
+        # Determine if this is lora_A or lora_B, and the slice index
+        lora_type = None
+        slice_idx = None
+        
+        for i, part in enumerate(parts):
+            if part in ("lora_A_slices", "lora_B_slices"):
+                lora_type = "lora_a" if part == "lora_A_slices" else "lora_b"
+                if i + 1 < len(parts):
+                    try:
+                        slice_idx = int(parts[i + 1])
+                    except ValueError:
+                        pass
+                module = parts[i - 1] if i > 0 else None
+                break
+
+        if lora_type is None or slice_idx is None or module is None:
+            logger.warning("Could not parse fused adapter tensor: %s", name)
+            return
+
+        # Map HuggingFace module names to GGUF module names
+        module_map = {
+            "qkv_proj": "attn_qkv",
+            "input_linear": "ffn_gate_up",
+        }
+
+        gguf_module = module_map.get(module)
+        if not gguf_module:
+            logger.warning("Unknown fused module type %s, skipping", module)
+            return
+
+        if data_torch.ndim != 4:
+            logger.warning("Unexpected tensor ndim %d for fused adapter tensor %s", data_torch.ndim, name)
+            return
+
+        num_adapters = data_torch.shape[0]
+        
+        if lora_type == "lora_a":
+            # Only process the first slice (others are duplicates)
+            if slice_idx != 0:
+                return
+            
+            for adapter_idx in range(1, num_adapters):
+                adapter_id = adapter_idx - 1
+                adapter_data = data_torch[adapter_idx, 0]
+                gguf_name = f"blk.{layer_id}.{gguf_module}.lora_a.adapter_{adapter_id}.weight"
+                yield gguf_name, adapter_data
+        else:
+            # Collect B slices for later concatenation
+            for adapter_idx in range(1, num_adapters):
+                adapter_id = adapter_idx - 1
+                slice_data = data_torch[adapter_idx, 0]  # [out_features_slice, max_lora_rank]
+                self._collect_fused_b_slice(layer_id, module, adapter_id, slice_data)
+
+    def _handle_adapter_tensor(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        """Convert and write adapter LoRA tensors.
+        
+        HF stores adapter weights in tensors with shape [num_adapters, 1, max_lora_rank, features]
+        where each adapter index corresponds to a different LoRA adapter.
+        We need to split these into individual tensors per adapter.
+        """
+        parts = name.split(".")
+
+        # Find the layer index
+        layer_id = None
+        for i, part in enumerate(parts):
+            if part == "layers" and i + 1 < len(parts):
+                try:
+                    layer_id = int(parts[i + 1])
+                    break
+                except ValueError:
+                    continue
+
+        if layer_id is None:
+            logger.warning("Skipping adapter tensor without valid layer_id: %s", name)
+            return
+
+        # Layer 0 is the switch layer - skip adapter tensors for switch layer
+        if layer_id == 0:
+            logger.info("Skipping switch layer adapter tensor: %s", name)
+            return
+
+        # Add offset of +1 because layer 0 is reserved for the switch layer
+        layer_id += 1
+
+        # Determine lora type (a or b)
+        lora_type = "lora_a" if "lora_A" in name else "lora_b"
+
+        # Find the module name
+        module = None
+        for i, part in enumerate(parts):
+            if part in ("lora_A_slices", "lora_B_slices", "lora_A", "lora_B"):
+                if i > 0:
+                    module = parts[i - 1]
+                break
+
+        if module is None:
+            logger.warning("Could not parse module from: %s", name)
+            return
+
+        # Map HuggingFace module names to GGUF module names
+        module_map = {
+            "qkv_proj": "attn_qkv",
+            "o_proj": "attn_output",
+            "gate_proj": "ffn_gate",
+            "up_proj": "ffn_up",
+            "down_proj": "ffn_down",
+            "gate_up_proj": "ffn_gate_up",
+            "input_linear": "ffn_gate_up",
+            "output_linear": "ffn_down",
+        }
+
+        gguf_module = module_map.get(module)
+        if not gguf_module:
+            logger.warning("Unknown module type %s, skipping adapter tensor", module)
+            return
+
+        # HF tensor shape: [num_adapters, 1, max_lora_rank, features] for lora_A
+        # HF tensor shape: [num_adapters, 1, out_features, max_lora_rank] for lora_B
+        # Index 0 is base model, indices 1+ are adapters (adapter_id = index - 1)
+        if data_torch.ndim != 4:
+            logger.warning("Unexpected tensor ndim %d for adapter tensor %s, skipping", data_torch.ndim, name)
+            return
+
+        num_adapters = data_torch.shape[0]
+        
+        # Write each adapter's weights as a separate tensor
+        for adapter_idx in range(1, num_adapters):
+            adapter_id = adapter_idx - 1  # HF index 0 = base, index 1 = adapter 0
+            
+            if lora_type == "lora_a":
+                # Shape: [num_adapters, 1, max_lora_rank, features] -> [max_lora_rank, features]
+                adapter_data = data_torch[adapter_idx, 0]
+            else:
+                # Shape: [num_adapters, 1, out_features, max_lora_rank] -> [out_features, max_lora_rank]
+                adapter_data = data_torch[adapter_idx, 0]
+            
+            gguf_name = f"blk.{layer_id}.{gguf_module}.{lora_type}.adapter_{adapter_id}.weight"
+            yield gguf_name, adapter_data

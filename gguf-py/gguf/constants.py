@@ -158,6 +158,17 @@ class Keys:
         TARGET_HIDDEN_SIZE                = "{arch}.target_hidden_size"
         NORM_BEFORE_RESIDUAL              = "{arch}.norm_before_residual"
 
+        # Granite Switch
+        ADAPTER_COUNT                     = "{arch}.adapter_count"
+        ADAPTER_RANKS                     = "{arch}.adapter_ranks"
+        MAX_LORA_RANK                     = "{arch}.max_lora_rank"
+        ADAPTER_TOKEN_IDS                 = "{arch}.adapter_token_ids"
+        ADAPTER_SUBSTITUTE_TOKEN_IDS      = "{arch}.adapter_substitute_token_ids"
+        CONTROL_TOKEN_GAIN                = "{arch}.control_token_gain"
+        SWITCH_HEAD_DIM                   = "{arch}.switch_head_dim"
+        PROJECTION_HEAD_DIM               = "{arch}.projection_head_dim"
+        LORA_TARGET_MODULES               = "{arch}.lora_target_modules"
+
     class Attention:
         HEAD_COUNT                   = "{arch}.attention.head_count"
         HEAD_COUNT_KV                = "{arch}.attention.head_count_kv"
@@ -484,6 +495,7 @@ class MODEL_ARCH(IntEnum):
     EXAONE4          = auto()
     EXAONE_MOE       = auto()
     GRANITE          = auto()
+    GRANITE_SWITCH   = auto()
     GRANITE_MOE      = auto()
     GRANITE_HYBRID   = auto()
     CHAMELEON        = auto()
@@ -1040,6 +1052,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.EXAONE4:          "exaone4",
     MODEL_ARCH.EXAONE_MOE:       "exaone-moe",
     MODEL_ARCH.GRANITE:          "granite",
+    MODEL_ARCH.GRANITE_SWITCH:   "graniteswitch",
     MODEL_ARCH.GRANITE_MOE:      "granitemoe",
     MODEL_ARCH.GRANITE_HYBRID:   "granitehybrid",
     MODEL_ARCH.CHAMELEON:        "chameleon",
@@ -3505,6 +3518,20 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.NEXTN_SHARED_HEAD_NORM,
     ],
     MODEL_ARCH.GRANITE: [
+        MODEL_TENSOR.TOKEN_EMBD,
+        MODEL_TENSOR.OUTPUT_NORM,
+        MODEL_TENSOR.OUTPUT,
+        MODEL_TENSOR.ATTN_NORM,
+        MODEL_TENSOR.ATTN_Q,
+        MODEL_TENSOR.ATTN_K,
+        MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.ATTN_OUT,
+        MODEL_TENSOR.FFN_NORM,
+        MODEL_TENSOR.FFN_GATE,
+        MODEL_TENSOR.FFN_DOWN,
+        MODEL_TENSOR.FFN_UP,
+    ],
+    MODEL_ARCH.GRANITE_SWITCH: [
         MODEL_TENSOR.TOKEN_EMBD,
         MODEL_TENSOR.OUTPUT_NORM,
         MODEL_TENSOR.OUTPUT,

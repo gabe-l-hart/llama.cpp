@@ -25,6 +25,10 @@ void llama_model_granite_switch::load_arch_hparams(llama_model_loader & ml) {
     hparams.adapter_token_ids_arr.fill(-1);
     hparams.adapter_substitute_token_ids_arr.fill(-1);
 
+    // Granite Switch has no MoE experts - override any inherited values
+    hparams.n_expert = 0;
+    hparams.n_expert_used = 0;
+
     // Granite uses rope_finetuned as a switch for rope, so default to true
     bool rope_finetuned = true;
     ml.get_key(LLM_KV_ROPE_SCALING_FINETUNED, rope_finetuned, false);
@@ -36,7 +40,7 @@ void llama_model_granite_switch::load_arch_hparams(llama_model_loader & ml) {
     }
 }
 
-void llama_model_granite_switch::load_arch_tensors(llama_model_loader &) {
+void llama_model_granite_switch::load_arch_tensors(llama_model_loader & ml) {
     LLAMA_LOAD_LOCALS;
 
     tok_embd = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, 0);
@@ -49,7 +53,140 @@ void llama_model_granite_switch::load_arch_tensors(llama_model_loader &) {
         output = create_tensor(tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, TENSOR_DUPLICATED);
     }
 
-    // Layer 0 is the switch layer - no standard tensors
+    // Load embedded adapters from GGUF
+    // Format: blk.{layer}.{module}.lora_{a|b}.adapter_{id}.weight
+    if (hparams.n_adapters > 0 && hparams.max_lora_rank > 0) {
+        // First pass: collect all lora tensors by (module, lora_type, adapter_id)
+        struct LoraTensorInfo {
+            std::string module;
+            bool is_a;  // true = lora_a, false = lora_b
+            int adapter_id;
+            ggml_tensor * tensor = nullptr;
+        };
+
+        std::vector<LoraTensorInfo> lora_info;
+        struct gguf_context * gguf = ml.metadata;
+
+        for (int i = 0; i < gguf_get_n_tensors(gguf); i++) {
+            const char * name = gguf_get_tensor_name(gguf, i);
+            if (!name) continue;
+
+            // Check if this is an adapter LoRA tensor
+            // Format: blk.{layer}.{module}.lora_{a|b}.adapter_{id}.weight
+            std::string n(name);
+
+            // Split by '.'
+            std::vector<std::string> parts;
+            {
+                std::string part;
+                for (char c : n) {
+                    if (c == '.') {
+                        parts.push_back(std::move(part));
+                        part.clear();
+                    } else {
+                        part += c;
+                    }
+                }
+                parts.push_back(std::move(part));
+            }
+
+            // Expected: ["blk", "0", "module", "lora_a/b", "adapter_id", "weight"]
+            if (parts.size() < 7) continue;
+            if (parts[0] != "blk") continue;
+
+            // Check if this is a lora tensor
+            if (parts[3].find("lora_") != 0) continue;
+
+            // Check if this is an adapter tensor
+            if (parts[4].find("adapter_") != 0) continue;
+
+            // Extract module name
+            std::string module = parts[2];
+
+            // Check if this is a valid LoRA module
+            std::vector<std::string> valid_modules = {"attn_qkv", "attn_output", "ffn_gate", "ffn_up", "ffn_down"};
+            bool valid = false;
+            for (const auto & vm : valid_modules) {
+                if (module == vm) { valid = true; break; }
+            }
+            if (!valid) continue;
+
+            // Extract lora_type (a or b)
+            std::string lora_type = parts[3].substr(5);  // Remove "lora_" prefix
+            if (lora_type != "lora_a" && lora_type != "lora_b") continue;
+
+            // Extract adapter_id from "adapter_N"
+            std::string id_str = parts[4].substr(8);  // Remove "adapter_" prefix
+            if (id_str.empty()) continue;
+
+            int adapter_id;
+            try {
+                adapter_id = std::stoi(id_str);
+            } catch (...) {
+                continue;
+            }
+            if (adapter_id < 0 || adapter_id >= (int)hparams.n_adapters) continue;
+
+            LoraTensorInfo info;
+            info.module = module;
+            info.is_a = (lora_type == "lora_a");
+            info.adapter_id = adapter_id;
+            info.tensor = ml.get_tensor_meta(name);
+            lora_info.push_back(info);
+        }
+
+        // Build adapter maps
+        std::vector<std::unique_ptr<llama_adapter_lora>> adapter_loras(hparams.n_adapters);
+
+        // Group by module for each adapter
+        struct ModuleLora {
+            std::string full_key;  // "module.weight"
+            ggml_tensor * a = nullptr;
+            ggml_tensor * b = nullptr;
+        };
+
+        // Use a map keyed by (adapter_id, module) to collect tensors
+        std::map<std::pair<int, std::string>, ModuleLora> module_map;
+
+        for (const auto & info : lora_info) {
+            auto key = std::make_pair(info.adapter_id, info.module);
+            auto & ml_item = module_map[key];
+            ml_item.full_key = info.module + ".weight";
+
+            if (info.is_a) {
+                ml_item.a = info.tensor;
+            } else {
+                ml_item.b = info.tensor;
+            }
+        }
+
+        // Create adapter lora objects
+        for (const auto & [key, ml_item] : module_map) {
+            int adapter_id = key.first;
+
+            if (!adapter_loras[adapter_id]) {
+                adapter_loras[adapter_id] = std::make_unique<llama_adapter_lora>(this);
+            }
+
+            if (ml_item.a && ml_item.b) {
+                adapter_loras[adapter_id]->ab_map[ml_item.full_key + ".lora_a"] =
+                    llama_adapter_lora_weight(ml_item.a, nullptr);
+                auto & existing = adapter_loras[adapter_id]->ab_map[ml_item.full_key + ".lora_b"];
+                existing.a = nullptr;
+                existing.b = ml_item.b;
+            }
+        }
+
+        // Store embedded adapters
+        for (auto & alora : adapter_loras) {
+            if (alora && !alora->ab_map.empty()) {
+                alora->alpha = 1.0f;
+                embedded_loras.push_back(alora.release());
+            }
+        }
+    }
+
+    // Layer 0 is the switch layer - no standard decoder tensors
     // Decoder layers start at index 1
     for (int i = 1; i < n_layer; ++i) {
         auto & layer = layers[i];

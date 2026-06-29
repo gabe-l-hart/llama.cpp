@@ -1259,24 +1259,19 @@ void llama_context::set_adapters_lora(llama_adapter_lora ** adapters, size_t n_a
 bool llama_context::adapters_lora_are_same(llama_adapter_lora ** adapters, size_t n_adapters, float * scales) {
     LLAMA_LOG_DEBUG("%s: adapters = %p\n", __func__, (void *) adapters);
 
-    // Adapters with a zero scale are never added to `loras`, so also ignore them for the comparison.
-    size_t n_non_zero = 0;
+    if (n_adapters != loras->size()) {
+        return false;
+    }
 
     for (size_t i = 0; i < n_adapters; i ++) {
         if (scales[i] == 0.0f) {
-            continue;
-        }
-        n_non_zero++;
-
-        auto it = loras->find(adapters[i]);
-
-        if (it == loras->end() || it->second != scales[i]) {
             return false;
         }
-    }
 
-    if (n_non_zero != loras->size()) {
-        return false;
+        const auto & lora = (*loras)[i];
+        if (lora.first != adapters[i] || lora.second != scales[i]) {
+            return false;
+        }
     }
 
     return true;

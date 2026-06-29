@@ -889,6 +889,33 @@ class GGUFWriter:
     def add_embedding_scale(self, value: float) -> None:
         self.add_float32(Keys.LLM.EMBEDDING_SCALE.format(arch=self.arch), value)
 
+    def add_adapter_count(self, count: int) -> None:
+        self.add_uint32(Keys.LLM.ADAPTER_COUNT.format(arch=self.arch), count)
+
+    def add_adapter_ranks(self, ranks: list[int]) -> None:
+        self.add_array(Keys.LLM.ADAPTER_RANKS.format(arch=self.arch), ranks)
+
+    def add_max_lora_rank(self, rank: int) -> None:
+        self.add_uint32(Keys.LLM.MAX_LORA_RANK.format(arch=self.arch), rank)
+
+    def add_adapter_token_ids(self, ids: list[int]) -> None:
+        self.add_array(Keys.LLM.ADAPTER_TOKEN_IDS.format(arch=self.arch), ids)
+
+    def add_adapter_substitute_token_ids(self, ids: list[int]) -> None:
+        self.add_array(Keys.LLM.ADAPTER_SUBSTITUTE_TOKEN_IDS.format(arch=self.arch), ids)
+
+    def add_control_token_gain(self, gain: float) -> None:
+        self.add_float32(Keys.LLM.CONTROL_TOKEN_GAIN.format(arch=self.arch), gain)
+
+    def add_switch_head_dim(self, dim: int) -> None:
+        self.add_uint32(Keys.LLM.SWITCH_HEAD_DIM.format(arch=self.arch), dim)
+
+    def add_projection_head_dim(self, dim: int) -> None:
+        self.add_uint32(Keys.LLM.PROJECTION_HEAD_DIM.format(arch=self.arch), dim)
+
+    def add_lora_target_modules(self, modules: list[str]) -> None:
+        self.add_array(Keys.LLM.LORA_TARGET_MODULES.format(arch=self.arch), modules)
+
     def add_wkv_head_size(self, size: int) -> None:
         self.add_uint32(Keys.WKV.HEAD_SIZE.format(arch=self.arch), size)
 

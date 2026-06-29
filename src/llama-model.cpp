@@ -1063,6 +1063,12 @@ void llama_model_base::load_hparams(llama_model_loader & ml) {
         }
     }
 
+    // Granite Switch has no MoE experts (uses adapter switching instead)
+    if (arch == LLM_ARCH_GRANITE_SWITCH) {
+        hparams.n_expert      = 0;
+        hparams.n_expert_used = 0;
+    }
+
     if (arch == LLM_ARCH_WAVTOKENIZER_DEC) {
         ml.get_key(LLM_KV_FEATURES_LENGTH,  hparams.n_embd);
         ml.get_key(LLM_KV_EMBEDDING_LENGTH, hparams.n_embd_out_impl);
