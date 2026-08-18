@@ -8,7 +8,7 @@ import torch
 if TYPE_CHECKING:
     from torch import Tensor
 
-from .base import MmprojModel, ModelBase, gguf, logger
+from .base import MmprojModel, ModelBase, TextModel, gguf, logger
 
 from .llama import LlamaModel
 from .mamba import Mamba2Model
@@ -540,6 +540,163 @@ class GraniteSpeechPlusMmprojModel(GraniteSpeechMmprojModel):
                     f"expected concatenated dimension ({expected_dim}). "
                     f"Expected: hidden_dim ({hidden_dim}) * (len(feature_layers) + 1) = {expected_dim}"
                 )
+
+
+@ModelBase.register("CtcConformerForCTC")
+@ModelBase.example("ibm-granite/granite-speech-4.2-470m-turboctc")
+class GraniteSpeechCTCFrontendMmprojModel(MmprojModel):
+    """Front-end-only mmproj for granite-speech-ctc: log-mel + delta + frame-stacking
+    preprocessing, plus a single learned linear projection ("input_linear") up to the paired
+    native GraniteSpeechCTCModel's working hidden size. All real encoder computation (the 16
+    conformer blocks, subsampling, CTC head) lives in that native architecture instead, so this
+    mmproj is "transformer-less" in the same spirit as gemma4ua's single-projection audio
+    front-end (see Gemma4UnifiedVisionAudioModel in conversion/gemma.py).
+
+    CtcConformerConfig is flat (no nested "encoder_config"/"text_config"), so get_audio_config()
+    and has_text_backbone are both overridden from the GraniteSpeechMmprojModel defaults.
+    """
+    has_vision_encoder = False
+    has_audio_encoder = True
+    has_text_backbone = False
+
+    def get_audio_config(self) -> dict[str, Any] | None:
+        return self.global_config
+
+    def set_gguf_parameters(self):
+        assert self.hparams_audio is not None
+        a = self.hparams_audio
+        hidden_dim = a["hidden_dim"]
+
+        # no learned encoder stack here (see class docstring); these are redundant but set to
+        # satisfy the generic MmprojModel.set_gguf_parameters() lookups below, mirroring
+        # gemma4ua's "transformer-less" front-end (conversion/gemma.py)
+        self.n_embd_text = hidden_dim
+        a["hidden_size"] = hidden_dim
+        a["intermediate_size"] = 0
+        a["num_layers"] = 0
+        a["num_attention_heads"] = 0
+
+        super().set_gguf_parameters()
+        self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.GRANITE_SPEECH_CTC_FE)
+
+        self.gguf_writer.add_audio_raw_num_mel_bins(a["n_mels"])
+        self.gguf_writer.add_audio_num_mel_bins(a["n_mels"] * (2 if a["deltas"] else 1) * a["stack_factor"])
+        self.gguf_writer.add_audio_stack_factor(a["stack_factor"])
+        self.gguf_writer.add_audio_delta_win_length(a["delta_win_length"])
+
+    @classmethod
+    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
+        # this mmproj only carries the single input_linear projection; every other tensor in
+        # the checkpoint belongs to GraniteSpeechCTCModel (the paired native architecture)
+        name, _ = item
+        if name not in ("encoder.input_linear.weight", "encoder.input_linear.bias"):
+            return None
+        return super().filter_tensors(item)
+
+
+@ModelBase.register("CtcConformerForCTC")
+@ModelBase.example("ibm-granite/granite-speech-4.2-470m-turboctc")
+class GraniteSpeechCTCModel(TextModel):
+    """Conversion for IBM's CtcConformerForCTC (granite-speech-ctc): a CTC acoustic model with
+    no autoregressive LLM backbone. Loads as a real llama_model via -m (no chat/text pairing),
+    but is non-causal, has no KV-cache, and never runs the sampling loop - see
+    GraniteSpeechCTCFrontendMmprojModel above for the paired front-end mmproj that feeds it via
+    the standard llama.cpp raw-embedding (.embd) input path.
+
+    The checkpoint's own front-end and its "input_linear" projection are converted by the paired
+    mmproj instead (see that class's docstring) - filter_tensors() below drops them here so each
+    tensor is only ever written to one of the two GGUF files.
+    """
+    model_arch = gguf.MODEL_ARCH.GRANITE_SPEECH_CTC
+
+    _batch_norm_tensors: list[dict[str, Tensor]] | None = None
+
+    def set_vocab(self):
+        tokens, toktypes, tokpre = self.get_vocab_base()
+
+        # id 0 is the CTC blank symbol, not part of the tokenizer's own vocab - the model's
+        # output layer has 16384 classes (16383 real tokens + 1 blank). Insert a placeholder
+        # so the GGUF vocab size matches the model's actual output width; token_id_offset=1
+        # (see set_gguf_parameters) reflects this same +1 shift for decode-side id mapping.
+        tokens.insert(0, "<blank>")
+        toktypes.insert(0, gguf.TokenType.CONTROL)
+
+        self.gguf_writer.add_tokenizer_model("gpt2")
+        self.gguf_writer.add_tokenizer_pre(tokpre)
+        self.gguf_writer.add_token_list(tokens)
+        self.gguf_writer.add_token_types(toktypes)
+
+        special_vocab = gguf.SpecialVocab(self.dir_model, load_merges=True)
+        special_vocab.add_to_gguf(self.gguf_writer)
+
+    def set_gguf_parameters(self):
+        h = self.hparams
+        self.gguf_writer.add_block_count(self.block_count)
+        self.gguf_writer.add_embedding_length(h["hidden_dim"])
+        self.gguf_writer.add_feed_forward_length(h["hidden_dim"] * h["feedforward_mult"])
+        self.gguf_writer.add_head_count(h["num_heads"])
+        self.gguf_writer.add_key_length(h["dim_head"])
+        self.gguf_writer.add_value_length(h["dim_head"])
+        self.gguf_writer.add_vocab_size(h["output_dim"])
+        self.gguf_writer.add_layer_norm_eps(1e-5)
+        self.gguf_writer.add_causal_attention(False)
+        # no real fixed context limit (arbitrarily long audio is chunked internally via
+        # context_size), but the generic hparam loader requires this key to be present
+        self.gguf_writer.add_context_length(65536)
+
+        self.gguf_writer.add_ctc_context_size(h["context_size"])
+        self.gguf_writer.add_ctc_max_pos_emb(h["max_pos_emb"])
+        self.gguf_writer.add_ctc_conv_kernel(h["conv_kernel_size"])
+        self.gguf_writer.add_ctc_subsample_layers(list(h["subsample_layers"]))
+        self.gguf_writer.add_ctc_conv_expansion_factor(h["conv_expansion_factor"])
+        self.gguf_writer.add_ctc_num_special_tokens(h["num_special_tokens"])
+        self.gguf_writer.add_ctc_token_id_offset(h["token_id_offset"])
+
+    def generate_extra_tensors(self) -> Iterable[tuple[str, Tensor]]:
+        # this arch is only ever driven via raw feature (.embd) input, never token ids, but
+        # llm_graph_context::build_inp_embd() requires a valid tok_embd tensor to exist
+        # (ggml_get_rows(tok_embd, tokens) is built into the graph even though the token-lookup
+        # branch is never selected at runtime) - a single dummy row satisfies the tensor-shape
+        # assert (tok_embd.ne[0] == n_embd) without wasting real space on an unused vocab table
+        yield (self.format_tensor_name(gguf.MODEL_TENSOR.TOKEN_EMBD), torch.zeros(1, self.hparams["hidden_dim"]))
+
+    @classmethod
+    def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
+        name, gen = item
+        if name in ("encoder.input_linear.weight", "encoder.input_linear.bias"):
+            # converted by the paired frontend mmproj instead, see GraniteSpeechCTCFrontendMmprojModel
+            return None
+        if "attention_dists" in name or "num_batches_tracked" in name:
+            return None
+        return super().filter_tensors(item)
+
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        # fold running_mean, running_var and eps into weight and bias for the depthwise conv's
+        # batch_norm (ggml has no batch_norm op) - same folding GraniteSpeechMmprojModel does
+        if "batch_norm" in name and "encoder.layers." in name:
+            if self._batch_norm_tensors is None:
+                self._batch_norm_tensors = [{} for _ in range(self.block_count)]
+            assert bid is not None
+            self._batch_norm_tensors[bid][name] = data_torch
+            if len(self._batch_norm_tensors[bid]) < 4:
+                return
+            prefix = f"encoder.layers.{bid}.conv.batch_norm"
+            weight = self._batch_norm_tensors[bid][f"{prefix}.weight"]
+            bias = self._batch_norm_tensors[bid][f"{prefix}.bias"]
+            running_mean = self._batch_norm_tensors[bid][f"{prefix}.running_mean"]
+            running_var = self._batch_norm_tensors[bid][f"{prefix}.running_var"]
+            eps = 1e-5
+            a = weight / torch.sqrt(running_var + eps)
+            b = bias - running_mean * a
+            yield from super().modify_tensors(a, f"{prefix}.weight", bid)
+            yield from super().modify_tensors(b, f"{prefix}.bias", bid)
+            return
+
+        if "depth_conv" in name and name.endswith(".weight"):
+            if data_torch.ndim == 3 and data_torch.shape[1] == 1:
+                data_torch = data_torch.squeeze(1)
+
+        yield from super().modify_tensors(data_torch, name, bid)
 
 
 @ModelBase.register("Granite4VisionForConditionalGeneration")

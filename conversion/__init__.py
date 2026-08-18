@@ -46,6 +46,7 @@ TEXT_MODEL_MAP: dict[str, str] = {
     "Cohere2MoeForCausalLM": "command_r",
     "Cohere2ForCausalLM": "command_r",
     "CohereForCausalLM": "command_r",
+    "CtcConformerForCTC": "granite",
     "DbrxForCausalLM": "dbrx",
     "DeciLMForCausalLM": "deci",
     "DeepseekForCausalLM": "deepseek",
@@ -274,6 +275,7 @@ TEXT_MODEL_MAP: dict[str, str] = {
 MMPROJ_MODEL_MAP: dict[str, str] = {
     "AudioFlamingo3ForConditionalGeneration": "ultravox",
     "CogVLMForCausalLM": "cogvlm",
+    "CtcConformerForCTC": "granite",
     "DeepseekOCR2ForCausalLM": "deepseek",
     "DeepseekOCRForCausalLM": "deepseek",
     "DotsOCRForCausalLM": "dotsocr",
