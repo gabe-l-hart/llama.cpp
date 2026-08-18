@@ -107,6 +107,7 @@ enum llm_arch {
     LLM_ARCH_GRANITE_MOE,
     LLM_ARCH_GRANITE_HYBRID,
     LLM_ARCH_GRANITE_SWITCH,
+    LLM_ARCH_CTC_CONFORMER,
     LLM_ARCH_CHAMELEON,
     LLM_ARCH_WAVTOKENIZER_DEC,
     LLM_ARCH_PLM,
@@ -385,6 +386,12 @@ enum llm_kv {
 
     LLM_KV_SHORTCONV_L_CACHE,
 
+    LLM_KV_CTC_CONTEXT_SIZE,
+    LLM_KV_CTC_MAX_POS_EMB,
+    LLM_KV_CTC_CONV_KERNEL,
+    LLM_KV_CTC_SUBSAMPLE_LAYERS,
+    LLM_KV_CTC_CONV_EXPANSION_FACTOR,
+
     LLM_KV_XIELU_ALPHA_N,
     LLM_KV_XIELU_ALPHA_P,
     LLM_KV_XIELU_BETA,
@@ -617,6 +624,16 @@ enum llm_tensor {
     LLM_TENSOR_POS_NET_ATTN_K,
     LLM_TENSOR_POS_NET_ATTN_V,
     LLM_TENSOR_POS_NET_ATTN_OUT,
+    LLM_TENSOR_ATTN_REL_POS,   // ctc-conformer
+    LLM_TENSOR_CONV_NORM,      // ctc-conformer
+    LLM_TENSOR_CONV_PW1,       // ctc-conformer
+    LLM_TENSOR_CONV_PW2,       // ctc-conformer
+    LLM_TENSOR_CONV_DW,        // ctc-conformer
+    LLM_TENSOR_CONV_DW_NORM,   // ctc-conformer
+    LLM_TENSOR_FFN_NORM_1,     // ctc-conformer
+    LLM_TENSOR_FFN_UP_1,       // ctc-conformer
+    LLM_TENSOR_FFN_DOWN_1,     // ctc-conformer
+    LLM_TENSOR_CTC_OUT_MID,    // ctc-conformer
     LLM_TENSOR_SHORTCONV_CONV,
     LLM_TENSOR_SHORTCONV_INPROJ,
     LLM_TENSOR_SHORTCONV_OUTPROJ,
