@@ -579,6 +579,10 @@ class CtcConformerFrontendMmprojModel(MmprojModel):
         super().set_gguf_parameters()
         self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.CTC_CONFORMER_FE)
 
+        # unused by this front-end's trivial graph, but required by the generic clip.cpp
+        # hparam loader - same as gemma4ua's "transformer-less" audio front-end
+        self.gguf_writer.add_audio_attention_layernorm_eps(1e-5)
+
         self.gguf_writer.add_audio_raw_num_mel_bins(a["n_mels"])
         self.gguf_writer.add_audio_num_mel_bins(a["n_mels"] * (2 if a["deltas"] else 1) * a["stack_factor"])
         self.gguf_writer.add_audio_stack_factor(a["stack_factor"])
@@ -659,6 +663,12 @@ class CtcConformerModel(TextModel):
         # branch is never selected at runtime) - a single dummy row satisfies the tensor-shape
         # assert (tok_embd.ne[0] == n_embd) without wasting real space on an unused vocab table
         yield (self.format_tensor_name(gguf.MODEL_TENSOR.TOKEN_EMBD), torch.zeros(1, self.hparams["hidden_dim"]))
+
+    def tensor_force_quant(self, name, new_name, bid, n_dims):
+        # the Metal ggml_ssm_conv kernel requires its weight operand to be F32
+        if ".conv_dw." in new_name and new_name.endswith(".weight"):
+            return gguf.GGMLQuantizationType.F32
+        return super().tensor_force_quant(name, new_name, bid, n_dims)
 
     @classmethod
     def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
