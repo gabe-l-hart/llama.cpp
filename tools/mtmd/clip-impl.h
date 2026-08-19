@@ -87,6 +87,8 @@
 #define KEY_A_PROJ_HEAD_COUNT      "clip.audio.projector.head_count"
 #define KEY_A_RVQ_NUM_QUANTIZERS   "clip.audio.rvq.num_quantizers"   // mimo-audio-tokenizer
 #define KEY_A_RVQ_CODEBOOK_SIZE    "clip.audio.rvq.codebook_size"    // mimo-audio-tokenizer: per-quantizer bin count
+#define KEY_A_CTC_RAW_NUM_MEL_BINS "clip.audio.raw_num_mel_bins"     // ctc-conformer: pre-delta, pre-stack mel bin count
+#define KEY_A_CTC_DELTA_WIN_LENGTH "clip.audio.delta_win_length"     // ctc-conformer
 #define KEY_A_WA_PATTERN_MODE      "clip.audio.wa_pattern_mode"      // mimo-audio-tokenizer, per-layer -1 (full) / 0 (windowed)
 #define KEY_A_ATTN_WINDOW_SIZE     "clip.audio.window_size"          // mimo-audio-tokenizer: sliding-window radius
 #define KEY_A_LOCAL_BLOCK_COUNT    "clip.audio.local_block_count"    // mimo-v2.5: input_local_transformer layer count
@@ -493,6 +495,7 @@ enum projector_type {
     PROJECTOR_TYPE_POCKETTTS_SPKENC,
     PROJECTOR_TYPE_POCKETTTS_GEN,
     PROJECTOR_TYPE_MUSE_GLIMMER,
+    PROJECTOR_TYPE_CTC_CONFORMER_FE,
     PROJECTOR_TYPE_UNKNOWN,
 };
 
@@ -555,6 +558,7 @@ static std::map<projector_type, std::string> PROJECTOR_TYPE_NAMES = {
     { PROJECTOR_TYPE_POCKETTTS_SPKENC,  "pockettts_spkenc"},
     { PROJECTOR_TYPE_POCKETTTS_GEN,     "pockettts_gen"},
     { PROJECTOR_TYPE_MUSE_GLIMMER,      "muse-glimmer"},
+    { PROJECTOR_TYPE_CTC_CONFORMER_FE,  "ctc_conformer_fe"},
 };
 
 static projector_type clip_projector_type_from_string(const std::string & str) {

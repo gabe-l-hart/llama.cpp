@@ -126,6 +126,11 @@ struct clip_hparams {
     int32_t audio_proj_downsample_rate = 0;
     int32_t audio_proj_head_count      = 0;
 
+    // ctc-conformer front-end: pre-delta, pre-stack mel bin count (n_mel_bins is the
+    // post-delta-post-stack width) and the delta finite-difference window length
+    int32_t audio_ctc_raw_mel_bins    = 0;
+    int32_t audio_ctc_delta_win_length = 0;
+
     // audio-to-mel preprocessor params
     int32_t audio_chunk_len   = -1; // in seconds
     int32_t audio_sample_rate = -1;
