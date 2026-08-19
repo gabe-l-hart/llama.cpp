@@ -2724,6 +2724,11 @@ def get_model_architecture(hparams: dict[str, Any], model_type: ModelType) -> st
         arch = text_config["architectures"][0]
     elif model_type == ModelType.MMPROJ and vision_config.get("architectures") is not None:
         arch = vision_config["architectures"][0]
+
+    # handle "auto_map" format
+    if auto_map_arch := hparams.get("auto_map", {}).get("AutoModel"):
+        arch = auto_map_arch.split(".")[-1]
+
     if arch is None:
         raise ValueError("Failed to detect model architecture")
     return arch
