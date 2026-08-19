@@ -544,10 +544,10 @@ class GraniteSpeechPlusMmprojModel(GraniteSpeechMmprojModel):
 
 @ModelBase.register("CtcConformerForCTC")
 @ModelBase.example("ibm-granite/granite-speech-4.2-470m-turboctc")
-class GraniteSpeechCTCFrontendMmprojModel(MmprojModel):
-    """Front-end-only mmproj for granite-speech-ctc: log-mel + delta + frame-stacking
+class CtcConformerFrontendMmprojModel(MmprojModel):
+    """Front-end-only mmproj for ctc-conformer: log-mel + delta + frame-stacking
     preprocessing, plus a single learned linear projection ("input_linear") up to the paired
-    native GraniteSpeechCTCModel's working hidden size. All real encoder computation (the 16
+    native CtcConformerModel's working hidden size. All real encoder computation (the 16
     conformer blocks, subsampling, CTC head) lives in that native architecture instead, so this
     mmproj is "transformer-less" in the same spirit as gemma4ua's single-projection audio
     front-end (see Gemma4UnifiedVisionAudioModel in conversion/gemma.py).
@@ -577,7 +577,7 @@ class GraniteSpeechCTCFrontendMmprojModel(MmprojModel):
         a["num_attention_heads"] = 0
 
         super().set_gguf_parameters()
-        self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.GRANITE_SPEECH_CTC_FE)
+        self.gguf_writer.add_clip_projector_type(gguf.VisionProjectorType.CTC_CONFORMER_FE)
 
         self.gguf_writer.add_audio_raw_num_mel_bins(a["n_mels"])
         self.gguf_writer.add_audio_num_mel_bins(a["n_mels"] * (2 if a["deltas"] else 1) * a["stack_factor"])
@@ -587,7 +587,7 @@ class GraniteSpeechCTCFrontendMmprojModel(MmprojModel):
     @classmethod
     def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
         # this mmproj only carries the single input_linear projection; every other tensor in
-        # the checkpoint belongs to GraniteSpeechCTCModel (the paired native architecture)
+        # the checkpoint belongs to CtcConformerModel (the paired native architecture)
         name, _ = item
         if name not in ("encoder.input_linear.weight", "encoder.input_linear.bias"):
             return None
@@ -596,18 +596,18 @@ class GraniteSpeechCTCFrontendMmprojModel(MmprojModel):
 
 @ModelBase.register("CtcConformerForCTC")
 @ModelBase.example("ibm-granite/granite-speech-4.2-470m-turboctc")
-class GraniteSpeechCTCModel(TextModel):
-    """Conversion for IBM's CtcConformerForCTC (granite-speech-ctc): a CTC acoustic model with
+class CtcConformerModel(TextModel):
+    """Conversion for IBM's CtcConformerForCTC (ctc-conformer): a CTC acoustic model with
     no autoregressive LLM backbone. Loads as a real llama_model via -m (no chat/text pairing),
     but is non-causal, has no KV-cache, and never runs the sampling loop - see
-    GraniteSpeechCTCFrontendMmprojModel above for the paired front-end mmproj that feeds it via
+    CtcConformerFrontendMmprojModel above for the paired front-end mmproj that feeds it via
     the standard llama.cpp raw-embedding (.embd) input path.
 
     The checkpoint's own front-end and its "input_linear" projection are converted by the paired
     mmproj instead (see that class's docstring) - filter_tensors() below drops them here so each
     tensor is only ever written to one of the two GGUF files.
     """
-    model_arch = gguf.MODEL_ARCH.GRANITE_SPEECH_CTC
+    model_arch = gguf.MODEL_ARCH.CTC_CONFORMER
 
     _batch_norm_tensors: list[dict[str, Tensor]] | None = None
 
@@ -664,7 +664,7 @@ class GraniteSpeechCTCModel(TextModel):
     def filter_tensors(cls, item: tuple[str, Callable[[], Tensor]]) -> tuple[str, Callable[[], Tensor]] | None:
         name, gen = item
         if name in ("encoder.input_linear.weight", "encoder.input_linear.bias"):
-            # converted by the paired frontend mmproj instead, see GraniteSpeechCTCFrontendMmprojModel
+            # converted by the paired frontend mmproj instead, see CtcConformerFrontendMmprojModel
             return None
         if "attention_dists" in name or "num_batches_tracked" in name:
             return None

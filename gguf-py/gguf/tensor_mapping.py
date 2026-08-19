@@ -1452,17 +1452,17 @@ class TensorNameMap:
             "model.layers.{bid}.conv.out_proj",
         ),
 
-        # granite-speech-ctc: Shaw relative position embedding table
+        # ctc-conformer: Shaw relative position embedding table
         MODEL_TENSOR.ATTN_REL_POS: (
             "encoder.layers.{bid}.attn.rel_pos_emb",
         ),
 
-        # granite-speech-ctc: pre-conv-module norm
+        # ctc-conformer: pre-conv-module norm
         MODEL_TENSOR.CONV_NORM: (
             "encoder.layers.{bid}.conv.norm",
         ),
 
-        # granite-speech-ctc: pointwise convs (implemented as Linear, see conv.pointwise_lin1/2)
+        # ctc-conformer: pointwise convs (implemented as Linear, see conv.pointwise_lin1/2)
         MODEL_TENSOR.CONV_PW1: (
             "encoder.layers.{bid}.conv.pointwise_lin1",
         ),
@@ -1471,18 +1471,18 @@ class TensorNameMap:
             "encoder.layers.{bid}.conv.pointwise_lin2",
         ),
 
-        # granite-speech-ctc: depthwise conv
+        # ctc-conformer: depthwise conv
         MODEL_TENSOR.CONV_DW: (
             "encoder.layers.{bid}.conv.depth_conv.conv",
         ),
 
-        # granite-speech-ctc: folded batch norm (weight/bias only, running stats folded at
+        # ctc-conformer: folded batch norm (weight/bias only, running stats folded at
         # conversion time) applied after the depthwise conv
         MODEL_TENSOR.CONV_DW_NORM: (
             "encoder.layers.{bid}.conv.batch_norm",
         ),
 
-        # granite-speech-ctc: second half-step FFN (Macaron-style, applied after the conv module)
+        # ctc-conformer: second half-step FFN (Macaron-style, applied after the conv module)
         MODEL_TENSOR.FFN_NORM_1: (
             "encoder.layers.{bid}.ff2.pre_norm",
         ),
@@ -1495,7 +1495,7 @@ class TensorNameMap:
             "encoder.layers.{bid}.ff2.down_proj",
         ),
 
-        # granite-speech-ctc: mid-stack self-conditioning back-projection (softmax(mid ctc
+        # ctc-conformer: mid-stack self-conditioning back-projection (softmax(mid ctc
         # logits) -> hidden_dim, added back into the residual stream)
         MODEL_TENSOR.CTC_OUT_MID: (
             "encoder.out_mid",

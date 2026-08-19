@@ -414,8 +414,8 @@ class Keys:
         WINDOW_SIZE         = "clip.audio.window_size"
         LOCAL_BLOCK_COUNT   = "clip.audio.local_block_count" # mimo-v2.5: input_local_transformer layer count
         LOCAL_GROUP_SIZE    = "clip.audio.local_group_size"  # mimo-v2.5: input_local_transformer grouping size
-        RAW_NUM_MEL_BINS    = "clip.audio.raw_num_mel_bins" # granite_speech_ctc_fe: pre-delta, pre-stack mel bin count
-        DELTA_WIN_LENGTH    = "clip.audio.delta_win_length" # granite_speech_ctc_fe
+        RAW_NUM_MEL_BINS    = "clip.audio.raw_num_mel_bins" # ctc_conformer_fe: pre-delta, pre-stack mel bin count
+        DELTA_WIN_LENGTH    = "clip.audio.delta_win_length" # ctc_conformer_fe
 
         class Attention:
             HEAD_COUNT      = "clip.audio.attention.head_count"
@@ -560,7 +560,7 @@ class MODEL_ARCH(IntEnum):
     GRANITE_MOE      = auto()
     GRANITE_HYBRID   = auto()
     GRANITE_SWITCH   = auto()
-    GRANITE_SPEECH_CTC = auto()
+    CTC_CONFORMER    = auto()
     CHAMELEON        = auto()
     WAVTOKENIZER_DEC = auto()
     PLM              = auto()
@@ -837,16 +837,16 @@ class MODEL_TENSOR(IntEnum):
     POSNET_ATTN_K        = auto()
     POSNET_ATTN_V        = auto()
     POSNET_ATTN_OUT      = auto()
-    ATTN_REL_POS         = auto() # granite-speech-ctc (Shaw relative position embedding)
-    CONV_NORM            = auto() # granite-speech-ctc (pre-conv-module norm)
-    CONV_PW1             = auto() # granite-speech-ctc
-    CONV_PW2             = auto() # granite-speech-ctc
-    CONV_DW              = auto() # granite-speech-ctc (depthwise conv)
-    CONV_DW_NORM         = auto() # granite-speech-ctc (folded batch norm after depthwise conv)
-    FFN_NORM_1           = auto() # granite-speech-ctc (second half-step FFN)
-    FFN_UP_1             = auto() # granite-speech-ctc
-    FFN_DOWN_1           = auto() # granite-speech-ctc
-    CTC_OUT_MID          = auto() # granite-speech-ctc (mid-stack self-conditioning back-projection)
+    ATTN_REL_POS         = auto() # conformer-ctc (Shaw relative position embedding)
+    CONV_NORM            = auto() # conformer-ctc (pre-conv-module norm)
+    CONV_PW1             = auto() # conformer-ctc
+    CONV_PW2             = auto() # conformer-ctc
+    CONV_DW              = auto() # conformer-ctc (depthwise conv)
+    CONV_DW_NORM         = auto() # conformer-ctc (folded batch norm after depthwise conv)
+    FFN_NORM_1           = auto() # conformer-ctc (second half-step FFN)
+    FFN_UP_1             = auto() # conformer-ctc
+    FFN_DOWN_1           = auto() # conformer-ctc
+    CTC_OUT_MID          = auto() # conformer-ctc (mid-stack self-conditioning back-projection)
     SHORTCONV_CONV       = auto()
     SHORTCONV_INPROJ     = auto()
     SHORTCONV_OUTPROJ    = auto()
@@ -1192,152 +1192,152 @@ class MODEL_TENSOR(IntEnum):
 
 
 MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
-    MODEL_ARCH.MMPROJ:             "clip", # dummy arch for clip.cpp
-    MODEL_ARCH.LLAMA:              "llama",
-    MODEL_ARCH.LLAMA4:             "llama4",
-    MODEL_ARCH.DECI:               "deci",
-    MODEL_ARCH.FALCON:             "falcon",
-    MODEL_ARCH.BAICHUAN:           "baichuan",
-    MODEL_ARCH.GROK:               "grok",
-    MODEL_ARCH.GPT2:               "gpt2",
-    MODEL_ARCH.GPTJ:               "gptj",
-    MODEL_ARCH.GPTNEOX:            "gptneox",
-    MODEL_ARCH.MPT:                "mpt",
-    MODEL_ARCH.STARCODER:          "starcoder",
-    MODEL_ARCH.REFACT:             "refact",
-    MODEL_ARCH.BERT:               "bert",
-    MODEL_ARCH.MODERN_BERT:        "modern-bert",
-    MODEL_ARCH.NOMIC_BERT:         "nomic-bert",
-    MODEL_ARCH.NOMIC_BERT_MOE:     "nomic-bert-moe",
-    MODEL_ARCH.NEO_BERT:           "neo-bert",
-    MODEL_ARCH.JINA_BERT_V2:       "jina-bert-v2",
-    MODEL_ARCH.JINA_BERT_V3:       "jina-bert-v3",
-    MODEL_ARCH.EUROBERT:           "eurobert",
-    MODEL_ARCH.BLOOM:              "bloom",
-    MODEL_ARCH.STABLELM:           "stablelm",
-    MODEL_ARCH.QWEN:               "qwen",
-    MODEL_ARCH.QWEN2:              "qwen2",
-    MODEL_ARCH.QWEN2MOE:           "qwen2moe",
-    MODEL_ARCH.QWEN2VL:            "qwen2vl",
-    MODEL_ARCH.QWEN3:              "qwen3",
-    MODEL_ARCH.QWEN3MOE:           "qwen3moe",
-    MODEL_ARCH.QWEN3NEXT:          "qwen3next",
-    MODEL_ARCH.QWEN3VL:            "qwen3vl",
-    MODEL_ARCH.QWEN3VLMOE:         "qwen3vlmoe",
-    MODEL_ARCH.QWEN35:             "qwen35",
-    MODEL_ARCH.QWEN35MOE:          "qwen35moe",
-    MODEL_ARCH.PHI2:               "phi2",
-    MODEL_ARCH.PHI3:               "phi3",
-    MODEL_ARCH.PHIMOE:             "phimoe",
-    MODEL_ARCH.PLAMO:              "plamo",
-    MODEL_ARCH.PLAMO2:             "plamo2",
-    MODEL_ARCH.PLAMO3:             "plamo3",
-    MODEL_ARCH.CODESHELL:          "codeshell",
-    MODEL_ARCH.ORION:              "orion",
-    MODEL_ARCH.INTERNLM2:          "internlm2",
-    MODEL_ARCH.MINICPM:            "minicpm",
-    MODEL_ARCH.MINICPM3:           "minicpm3",
-    MODEL_ARCH.GEMMA:              "gemma",
-    MODEL_ARCH.GEMMA2:             "gemma2",
-    MODEL_ARCH.GEMMA3:             "gemma3",
-    MODEL_ARCH.GEMMA3N:            "gemma3n",
-    MODEL_ARCH.GEMMA4:             "gemma4",
-    MODEL_ARCH.GEMMA4_ASSISTANT:   "gemma4-assistant",
-    MODEL_ARCH.GEMMA_EMBEDDING:    "gemma-embedding",
-    MODEL_ARCH.STARCODER2:         "starcoder2",
-    MODEL_ARCH.RWKV6:              "rwkv6",
-    MODEL_ARCH.RWKV6QWEN2:         "rwkv6qwen2",
-    MODEL_ARCH.RWKV7:              "rwkv7",
-    MODEL_ARCH.ARWKV7:             "arwkv7",
-    MODEL_ARCH.MAMBA:              "mamba",
-    MODEL_ARCH.MAMBA2:             "mamba2",
-    MODEL_ARCH.JAMBA:              "jamba",
-    MODEL_ARCH.XVERSE:             "xverse",
-    MODEL_ARCH.COMMAND_R:          "command-r",
-    MODEL_ARCH.COHERE2:            "cohere2",
-    MODEL_ARCH.COHERE2MOE:         "cohere2moe",
-    MODEL_ARCH.DBRX:               "dbrx",
-    MODEL_ARCH.OLMO:               "olmo",
-    MODEL_ARCH.OLMO2:              "olmo2",
-    MODEL_ARCH.OLMOE:              "olmoe",
-    MODEL_ARCH.MUSE_GLIMMER:       "muse-glimmer",
-    MODEL_ARCH.OPENELM:            "openelm",
-    MODEL_ARCH.ARCTIC:             "arctic",
-    MODEL_ARCH.DEEPSEEK:           "deepseek",
-    MODEL_ARCH.DEEPSEEK2:          "deepseek2",
-    MODEL_ARCH.DEEPSEEK2OCR:       "deepseek2-ocr",
-    MODEL_ARCH.DEEPSEEK32:         "deepseek32",
-    MODEL_ARCH.DEEPSEEK4:          "deepseek4",
-    MODEL_ARCH.CHATGLM:            "chatglm",
-    MODEL_ARCH.GLM4:               "glm4",
-    MODEL_ARCH.GLM4_MOE:           "glm4moe",
-    MODEL_ARCH.GLM_DSA:            "glm-dsa",
-    MODEL_ARCH.BITNET:             "bitnet",
-    MODEL_ARCH.T5:                 "t5",
-    MODEL_ARCH.T5ENCODER:          "t5encoder",
-    MODEL_ARCH.JAIS:               "jais",
-    MODEL_ARCH.JAIS2:              "jais2",
-    MODEL_ARCH.NEMOTRON:           "nemotron",
-    MODEL_ARCH.NEMOTRON_H:         "nemotron_h",
-    MODEL_ARCH.NEMOTRON_H_MOE:     "nemotron_h_moe",
-    MODEL_ARCH.EXAONE:             "exaone",
-    MODEL_ARCH.EXAONE4:            "exaone4",
-    MODEL_ARCH.EXAONE_MOE:         "exaone-moe",
-    MODEL_ARCH.GRANITE:            "granite",
-    MODEL_ARCH.GRANITE_MOE:        "granitemoe",
-    MODEL_ARCH.GRANITE_HYBRID:     "granitehybrid",
-    MODEL_ARCH.GRANITE_SWITCH:     "graniteswitch",
-    MODEL_ARCH.GRANITE_SPEECH_CTC: "granite-speech-ctc",
-    MODEL_ARCH.CHAMELEON:          "chameleon",
-    MODEL_ARCH.WAVTOKENIZER_DEC:   "wavtokenizer-dec",
-    MODEL_ARCH.PLM:                "plm",
-    MODEL_ARCH.BAILINGMOE:         "bailingmoe",
-    MODEL_ARCH.BAILINGMOE2:        "bailingmoe2",
-    MODEL_ARCH.BAILINGMOE3:        "bailingmoe3",
-    MODEL_ARCH.DOTS1:              "dots1",
-    MODEL_ARCH.ARCEE:              "arcee",
-    MODEL_ARCH.AFMOE:              "afmoe",
-    MODEL_ARCH.LAGUNA:             "laguna",
-    MODEL_ARCH.ERNIE4_5:           "ernie4_5",
-    MODEL_ARCH.ERNIE4_5_MOE:       "ernie4_5-moe",
-    MODEL_ARCH.FALCON_H1:          "falcon-h1",
-    MODEL_ARCH.HUNYUAN_MOE:        "hunyuan-moe",
-    MODEL_ARCH.HUNYUAN_DENSE:      "hunyuan-dense",
-    MODEL_ARCH.HUNYUAN_VL:         "hunyuan_vl",
-    MODEL_ARCH.HY_V3:              "hy_v3",
-    MODEL_ARCH.SMOLLM3:            "smollm3",
-    MODEL_ARCH.GPT_OSS:            "gpt-oss",
-    MODEL_ARCH.LFM2:               "lfm2",
-    MODEL_ARCH.LFM2MOE:            "lfm2moe",
-    MODEL_ARCH.DREAM:              "dream",
-    MODEL_ARCH.SMALLTHINKER:       "smallthinker",
-    MODEL_ARCH.LLADA:              "llada",
-    MODEL_ARCH.LLADA_MOE:          "llada-moe",
-    MODEL_ARCH.SEED_OSS:           "seed_oss",
-    MODEL_ARCH.GROVEMOE:           "grovemoe",
-    MODEL_ARCH.APERTUS:            "apertus",
-    MODEL_ARCH.MINIMAX01:          "minimax-01",
-    MODEL_ARCH.MINIMAXM2:          "minimax-m2",
-    MODEL_ARCH.MINIMAXM3:          "minimax-m3",
-    MODEL_ARCH.COGVLM:             "cogvlm",
-    MODEL_ARCH.RND1:               "rnd1",
-    MODEL_ARCH.PANGU_EMBED:        "pangu-embedded",
-    MODEL_ARCH.MISTRAL3:           "mistral3",
-    MODEL_ARCH.EAGLE3:             "eagle3",
-    MODEL_ARCH.DFLASH:             "dflash",
-    MODEL_ARCH.MISTRAL4:           "mistral4",
-    MODEL_ARCH.PADDLEOCR:          "paddleocr",
-    MODEL_ARCH.MIMO2:              "mimo2",
-    MODEL_ARCH.STEP35:             "step35",
-    MODEL_ARCH.LLAMA_EMBED:        "llama-embed",
-    MODEL_ARCH.MAINCODER:          "maincoder",
-    MODEL_ARCH.KIMI_LINEAR:        "kimi-linear",
-    MODEL_ARCH.KIMI_K3:            "kimi-k3",
-    MODEL_ARCH.TALKIE:             "talkie",
-    MODEL_ARCH.MELLUM:             "mellum",
-    MODEL_ARCH.NANBEIGE:           "nanbeige",
-    MODEL_ARCH.QWEN3TTS:           "qwen3tts",
-    MODEL_ARCH.POCKETTTS:          "pockettts",
+    MODEL_ARCH.MMPROJ:           "clip", # dummy arch for clip.cpp
+    MODEL_ARCH.LLAMA:            "llama",
+    MODEL_ARCH.LLAMA4:           "llama4",
+    MODEL_ARCH.DECI:             "deci",
+    MODEL_ARCH.FALCON:           "falcon",
+    MODEL_ARCH.BAICHUAN:         "baichuan",
+    MODEL_ARCH.GROK:             "grok",
+    MODEL_ARCH.GPT2:             "gpt2",
+    MODEL_ARCH.GPTJ:             "gptj",
+    MODEL_ARCH.GPTNEOX:          "gptneox",
+    MODEL_ARCH.MPT:              "mpt",
+    MODEL_ARCH.STARCODER:        "starcoder",
+    MODEL_ARCH.REFACT:           "refact",
+    MODEL_ARCH.BERT:             "bert",
+    MODEL_ARCH.MODERN_BERT:      "modern-bert",
+    MODEL_ARCH.NOMIC_BERT:       "nomic-bert",
+    MODEL_ARCH.NOMIC_BERT_MOE:   "nomic-bert-moe",
+    MODEL_ARCH.NEO_BERT:         "neo-bert",
+    MODEL_ARCH.JINA_BERT_V2:     "jina-bert-v2",
+    MODEL_ARCH.JINA_BERT_V3:     "jina-bert-v3",
+    MODEL_ARCH.EUROBERT:         "eurobert",
+    MODEL_ARCH.BLOOM:            "bloom",
+    MODEL_ARCH.STABLELM:         "stablelm",
+    MODEL_ARCH.QWEN:             "qwen",
+    MODEL_ARCH.QWEN2:            "qwen2",
+    MODEL_ARCH.QWEN2MOE:         "qwen2moe",
+    MODEL_ARCH.QWEN2VL:          "qwen2vl",
+    MODEL_ARCH.QWEN3:            "qwen3",
+    MODEL_ARCH.QWEN3MOE:         "qwen3moe",
+    MODEL_ARCH.QWEN3NEXT:        "qwen3next",
+    MODEL_ARCH.QWEN3VL:          "qwen3vl",
+    MODEL_ARCH.QWEN3VLMOE:       "qwen3vlmoe",
+    MODEL_ARCH.QWEN35:           "qwen35",
+    MODEL_ARCH.QWEN35MOE:        "qwen35moe",
+    MODEL_ARCH.PHI2:             "phi2",
+    MODEL_ARCH.PHI3:             "phi3",
+    MODEL_ARCH.PHIMOE:           "phimoe",
+    MODEL_ARCH.PLAMO:            "plamo",
+    MODEL_ARCH.PLAMO2:           "plamo2",
+    MODEL_ARCH.PLAMO3:           "plamo3",
+    MODEL_ARCH.CODESHELL:        "codeshell",
+    MODEL_ARCH.ORION:            "orion",
+    MODEL_ARCH.INTERNLM2:        "internlm2",
+    MODEL_ARCH.MINICPM:          "minicpm",
+    MODEL_ARCH.MINICPM3:         "minicpm3",
+    MODEL_ARCH.GEMMA:            "gemma",
+    MODEL_ARCH.GEMMA2:           "gemma2",
+    MODEL_ARCH.GEMMA3:           "gemma3",
+    MODEL_ARCH.GEMMA3N:          "gemma3n",
+    MODEL_ARCH.GEMMA4:           "gemma4",
+    MODEL_ARCH.GEMMA4_ASSISTANT: "gemma4-assistant",
+    MODEL_ARCH.GEMMA_EMBEDDING:  "gemma-embedding",
+    MODEL_ARCH.STARCODER2:       "starcoder2",
+    MODEL_ARCH.RWKV6:            "rwkv6",
+    MODEL_ARCH.RWKV6QWEN2:       "rwkv6qwen2",
+    MODEL_ARCH.RWKV7:            "rwkv7",
+    MODEL_ARCH.ARWKV7:           "arwkv7",
+    MODEL_ARCH.MAMBA:            "mamba",
+    MODEL_ARCH.MAMBA2:           "mamba2",
+    MODEL_ARCH.JAMBA:            "jamba",
+    MODEL_ARCH.XVERSE:           "xverse",
+    MODEL_ARCH.COMMAND_R:        "command-r",
+    MODEL_ARCH.COHERE2:          "cohere2",
+    MODEL_ARCH.COHERE2MOE:       "cohere2moe",
+    MODEL_ARCH.DBRX:             "dbrx",
+    MODEL_ARCH.OLMO:             "olmo",
+    MODEL_ARCH.OLMO2:            "olmo2",
+    MODEL_ARCH.OLMOE:            "olmoe",
+    MODEL_ARCH.MUSE_GLIMMER:     "muse-glimmer",
+    MODEL_ARCH.OPENELM:          "openelm",
+    MODEL_ARCH.ARCTIC:           "arctic",
+    MODEL_ARCH.DEEPSEEK:         "deepseek",
+    MODEL_ARCH.DEEPSEEK2:        "deepseek2",
+    MODEL_ARCH.DEEPSEEK2OCR:     "deepseek2-ocr",
+    MODEL_ARCH.DEEPSEEK32:       "deepseek32",
+    MODEL_ARCH.DEEPSEEK4:        "deepseek4",
+    MODEL_ARCH.CHATGLM:          "chatglm",
+    MODEL_ARCH.GLM4:             "glm4",
+    MODEL_ARCH.GLM4_MOE:         "glm4moe",
+    MODEL_ARCH.GLM_DSA:          "glm-dsa",
+    MODEL_ARCH.BITNET:           "bitnet",
+    MODEL_ARCH.T5:               "t5",
+    MODEL_ARCH.T5ENCODER:        "t5encoder",
+    MODEL_ARCH.JAIS:             "jais",
+    MODEL_ARCH.JAIS2:            "jais2",
+    MODEL_ARCH.NEMOTRON:         "nemotron",
+    MODEL_ARCH.NEMOTRON_H:       "nemotron_h",
+    MODEL_ARCH.NEMOTRON_H_MOE:   "nemotron_h_moe",
+    MODEL_ARCH.EXAONE:           "exaone",
+    MODEL_ARCH.EXAONE4:          "exaone4",
+    MODEL_ARCH.EXAONE_MOE:       "exaone-moe",
+    MODEL_ARCH.GRANITE:          "granite",
+    MODEL_ARCH.GRANITE_MOE:      "granitemoe",
+    MODEL_ARCH.GRANITE_HYBRID:   "granitehybrid",
+    MODEL_ARCH.GRANITE_SWITCH:   "graniteswitch",
+    MODEL_ARCH.CTC_CONFORMER:    "ctc-conformer",
+    MODEL_ARCH.CHAMELEON:        "chameleon",
+    MODEL_ARCH.WAVTOKENIZER_DEC: "wavtokenizer-dec",
+    MODEL_ARCH.PLM:              "plm",
+    MODEL_ARCH.BAILINGMOE:       "bailingmoe",
+    MODEL_ARCH.BAILINGMOE2:      "bailingmoe2",
+    MODEL_ARCH.BAILINGMOE3:      "bailingmoe3",
+    MODEL_ARCH.DOTS1:            "dots1",
+    MODEL_ARCH.ARCEE:            "arcee",
+    MODEL_ARCH.AFMOE:            "afmoe",
+    MODEL_ARCH.LAGUNA:           "laguna",
+    MODEL_ARCH.ERNIE4_5:         "ernie4_5",
+    MODEL_ARCH.ERNIE4_5_MOE:     "ernie4_5-moe",
+    MODEL_ARCH.FALCON_H1:        "falcon-h1",
+    MODEL_ARCH.HUNYUAN_MOE:      "hunyuan-moe",
+    MODEL_ARCH.HUNYUAN_DENSE:    "hunyuan-dense",
+    MODEL_ARCH.HUNYUAN_VL:       "hunyuan_vl",
+    MODEL_ARCH.HY_V3:            "hy_v3",
+    MODEL_ARCH.SMOLLM3:          "smollm3",
+    MODEL_ARCH.GPT_OSS:          "gpt-oss",
+    MODEL_ARCH.LFM2:             "lfm2",
+    MODEL_ARCH.LFM2MOE:          "lfm2moe",
+    MODEL_ARCH.DREAM:            "dream",
+    MODEL_ARCH.SMALLTHINKER:     "smallthinker",
+    MODEL_ARCH.LLADA:            "llada",
+    MODEL_ARCH.LLADA_MOE:        "llada-moe",
+    MODEL_ARCH.SEED_OSS:         "seed_oss",
+    MODEL_ARCH.GROVEMOE:         "grovemoe",
+    MODEL_ARCH.APERTUS:          "apertus",
+    MODEL_ARCH.MINIMAX01:        "minimax-01",
+    MODEL_ARCH.MINIMAXM2:        "minimax-m2",
+    MODEL_ARCH.MINIMAXM3:        "minimax-m3",
+    MODEL_ARCH.COGVLM:           "cogvlm",
+    MODEL_ARCH.RND1:             "rnd1",
+    MODEL_ARCH.PANGU_EMBED:      "pangu-embedded",
+    MODEL_ARCH.MISTRAL3:         "mistral3",
+    MODEL_ARCH.EAGLE3:           "eagle3",
+    MODEL_ARCH.DFLASH:           "dflash",
+    MODEL_ARCH.MISTRAL4:         "mistral4",
+    MODEL_ARCH.PADDLEOCR:        "paddleocr",
+    MODEL_ARCH.MIMO2:            "mimo2",
+    MODEL_ARCH.STEP35:           "step35",
+    MODEL_ARCH.LLAMA_EMBED:      "llama-embed",
+    MODEL_ARCH.MAINCODER:        "maincoder",
+    MODEL_ARCH.KIMI_LINEAR:      "kimi-linear",
+    MODEL_ARCH.KIMI_K3:          "kimi-k3",
+    MODEL_ARCH.TALKIE:           "talkie",
+    MODEL_ARCH.MELLUM:           "mellum",
+    MODEL_ARCH.NANBEIGE:         "nanbeige",
+    MODEL_ARCH.QWEN3TTS:         "qwen3tts",
+    MODEL_ARCH.POCKETTTS:        "pockettts",
 }
 
 VISION_PROJECTOR_TYPE_NAMES: dict[VISION_PROJECTOR_TYPE, str] = {
@@ -4185,7 +4185,7 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.FFN_DOWN,
         MODEL_TENSOR.FFN_UP,
     ],
-    MODEL_ARCH.GRANITE_SPEECH_CTC: [
+    MODEL_ARCH.CTC_CONFORMER: [
         # unused: this arch is only ever driven via raw feature (.embd) input, never
         # token ids, but build_inp_embd() requires a valid tok_embd tensor to exist
         MODEL_TENSOR.TOKEN_EMBD,
@@ -5500,11 +5500,11 @@ class VisionProjectorType:
     MINIMAXM3      = "minimax_m3"
     MINICPMV4_6    = "minicpmv4_6"
     GRANITE_SPEECH = "granite_speech"  # audio
-    GRANITE_SPEECH_CTC_FE = "granite_speech_ctc_fe"  # audio, front-end only, no learned encoder
     MIMOVL         = "mimovl"
     MIMO_AUDIO     = "mimo_audio"
     GRANITE4_VISION = "granite4_vision"
     MUSE_GLIMMER   = "muse-glimmer"
+    CTC_CONFORMER_FE = "ctc_conformer_fe"  # audio, front-end only, no learned encoder
 
 
 # Items here are (block size, type size)
