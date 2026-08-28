@@ -27,7 +27,7 @@ vendor = {
     f"https://raw.githubusercontent.com/yhirose/cpp-httplib/{HTTPLIB_VERSION}/split.py":  "split.py",
     f"https://raw.githubusercontent.com/yhirose/cpp-httplib/{HTTPLIB_VERSION}/LICENSE":   "vendor/cpp-httplib/LICENSE",
 
-    "https://raw.githubusercontent.com/sheredom/subprocess.h/9ce0d701b6fb10f8f8c4445edd31e7c60a1237e3/subprocess.h": "vendor/sheredom/subprocess.h",
+    "https://raw.githubusercontent.com/sheredom/subprocess.h/0dccaa9aa176dd6d7ef8afeca3c18d6e80a32795/subprocess.h": "vendor/sheredom/subprocess.h",
 
     f"https://raw.githubusercontent.com/Cyan4973/xxHash/{XXHASH_COMMIT}/xxhash.c":      "vendor/hash/xxhash/xxhash.c",
     f"https://raw.githubusercontent.com/Cyan4973/xxHash/{XXHASH_COMMIT}/xxhash.h":      "vendor/hash/xxhash/xxhash.h",
@@ -55,6 +55,44 @@ patches = {
         '#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L) \\\n'
         '    && (defined(_MSC_VER) && (_MSC_VER >= 1000) || !defined(_MSC_VER)) /* >= C11 */\n'
     )],
+
+    # sha1 exports a bare "SHA1" symbol, which clashes with the boringssl one at link time.
+    # we compile it as C++ (see vendor/hash/CMakeLists.txt) and put it in a namespace.
+    "vendor/hash/sha1/sha1.h": [
+        (
+            '#if defined(__cplusplus)\n'
+            'extern "C" {\n'
+            '#endif\n',
+
+            'namespace vendor_hash {\n'
+        ),
+        (
+            '#if defined(__cplusplus)\n'
+            '}\n'
+            '#endif\n',
+
+            '} // namespace vendor_hash\n'
+        ),
+    ],
+
+    "vendor/hash/sha1/sha1.c": [
+        (
+            '#include "sha1.h"\n',
+
+            '#include "sha1.h"\n'
+            '\n'
+            'namespace vendor_hash {\n'
+        ),
+        (
+            '    SHA1Final((unsigned char *)hash_out, &ctx);\n'
+            '}\n',
+
+            '    SHA1Final((unsigned char *)hash_out, &ctx);\n'
+            '}\n'
+            '\n'
+            '} // namespace vendor_hash\n'
+        ),
+    ],
 
     # silence a maybe-uninitialized warning
     "vendor/hash/sha256/sha256.c": [(
