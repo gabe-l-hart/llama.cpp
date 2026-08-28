@@ -5540,7 +5540,7 @@ std::unique_ptr<server_res_generator> server_routes::handle_transcriptions_impl(
     }
 
     std::vector<raw_buffer> files{ it->second.data };
-    server_tokens tokens = process_mtmd_prompt(ctx_server.mctx, get_media_marker(), files);
+    server_tokens tokens = process_mtmd_prompt(ctx_server.mctx, get_media_marker(), files, ctx_server.init_opt);
 
     auto & rd = res->rd;
     {
